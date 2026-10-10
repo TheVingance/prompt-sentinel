@@ -3,9 +3,10 @@ import uuid
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 
 from src.core.config import settings
+from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
 from src.schemas.proxy import ChatCompletionRequest, ChatCompletionResponse
 from src.schemas.security import (
     SecurityIncidentResponse,
@@ -37,11 +38,14 @@ async def verify_api_key(authorization: str = Header(..., description="Bearer to
     response_model=ChatCompletionResponse,
     responses={
         403: {"model": SecurityIncidentResponse, "description": "Bloqueado pelo Firewall de IA"},
+        429: {"description": "Taxa de requisições excedida (Rate limit)"},
     },
 )
 async def chat_completions(
     request: ChatCompletionRequest,
+    response: Response,
     _token: str = Depends(verify_api_key),
+    rate_limit: RateLimitResult = Depends(check_rate_limit),
 ) -> Any:
     """Endpoint proxy de alta performance compatível com OpenAI Chat Completions.
 
@@ -52,6 +56,11 @@ async def chat_completions(
     4. Análise semântica de similaridade de jailbreak
     5. Encaminhamento seguro ao LLM upstream
     """
+    # Injeta cabeçalhos informativos de Rate Limit na resposta
+    response.headers["X-RateLimit-Limit"] = str(rate_limit.limit)
+    response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
+    response.headers["X-RateLimit-Reset"] = str(rate_limit.reset_seconds)
+
     # Exemplo de bloqueio rápido heurístico para validação inicial de segurança
     for message in request.messages:
         content_text = str(message.content).lower()
@@ -97,16 +106,16 @@ async def chat_completions(
             "Authorization": f"Bearer {settings.TARGET_LLM_API_KEY}",
             "Content-Type": "application/json",
         }
-        response = await client.post(
+        res = await client.post(
             upstream_url,
             headers=headers,
             json=request.model_dump(exclude_none=True),
         )
 
-        if response.status_code != 200:
+        if res.status_code != 200:
             raise HTTPException(
-                status_code=response.status_code,
-                detail=response.text,
+                status_code=res.status_code,
+                detail=res.text,
             )
 
-        return response.json()
+        return res.json()
