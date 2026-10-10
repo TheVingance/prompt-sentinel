@@ -8,21 +8,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router
 from src.core.config import settings
-from src.core.database import close_db, init_db
+from src.core.database import async_session_factory, close_db, init_db
 from src.core.redis import close_redis_pool, init_redis_pool
+from src.services.seed import seed_attack_signatures
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Gerencia o ciclo de vida dos recursos assíncronos (Redis e DB pools)."""
-    # Inicialização
+    # Inicialização de Redis
     try:
         await init_redis_pool()
     except Exception as exc:
         print(f"[Aviso] Redis não conectado na inicialização: {exc}")
 
+    # Inicialização de PostgreSQL & pgvector
     try:
         await init_db()
+        async with async_session_factory() as session:
+            inserted = await seed_attack_signatures(session)
+            if inserted > 0:
+                print(f"[Sentinel Init] {inserted} assinaturas de ataque indexadas no pgvector com sucesso.")
     except Exception as exc:
         print(f"[Aviso] PostgreSQL não conectado na inicialização: {exc}")
 
