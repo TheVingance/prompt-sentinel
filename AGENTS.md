@@ -21,7 +21,25 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 🎯 2. Princípios Fundamentais de Engenharia
+## 📋 2. Plano de Implementação & Aprovação Prévia Obrigatória
+
+> **Gatilho de Bloqueio:** Nenhuma linha de código deve ser desenvolvida ou modificada para uma nova feature sem a apresentação do plano e o consentimento explícito do usuário.
+
+1. **Criação do Artefato de Planejamento:**
+   - Antes de iniciar qualquer nova funcionalidade ou alteração arquitetural, o agente **DEVE OBRIGATORIAMENTE** criar um artefato intitulado **"Plano de Implementação"**.
+   - O plano deve detalhar:
+     - **Objetivo da Feature:** Problema resolvido e valor agregado ao portfólio.
+     - **Arquitetura & Design:** Módulos, classes, funções e contratos de API (endpoints/schemas).
+     - **Arquivos Impactados:** Lista precisa de novos arquivos e arquivos existentes que serão alterados.
+     - **Plano de Testes:** Cenários de testes unitários e de integração que serão construídos (`pytest`).
+     - **Métricas de Performance & Segurança:** Impacto esperado na latência e no pipeline defensivo.
+2. **Aprovação do Desenvolvedor:**
+   - O agente deve solicitar a revisão do plano pelo desenvolvedor.
+   - **O desenvolvimento só tem início após a aprovação formal do usuário.**
+
+---
+
+## 🎯 3. Princípios Fundamentais de Engenharia
 
 1. **Segurança em Primeiro Lugar:**
    - Nunca injete segredos, tokens ou senhas em código fonte ou arquivos rastreados pelo git.
@@ -41,7 +59,7 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 🧪 3. Qualidade de Código & Testes
+## 🧪 4. Qualidade de Código & Testes
 
 - **TDD / Testes Obrigatórios:** Nenhuma regra de segurança, filtro de PII ou rota de API deve ser considerada concluída sem testes automatizados em `tests/`.
 - **Framework de Teste:** `pytest` com `pytest-asyncio`.
@@ -49,7 +67,7 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 📦 4. Commits Semânticos
+## 📦 5. Commits Semânticos
 
 Siga rigorosamente o padrão **Conventional Commits**:
 - `feat(...)`: Nova funcionalidade.
@@ -63,14 +81,14 @@ Siga rigorosamente o padrão **Conventional Commits**:
 
 ---
 
-## 🐳 5. Reprodutibilidade & Docker
+## 🐳 6. Reprodutibilidade & Docker
 
 - Qualquer adição de dependência de sistema ou serviço (ex: novo banco, novo cache) **deve** ser refletida imediatamente no `docker-compose.yml` e no `Dockerfile`.
 - O comando `docker compose up --build` deve funcionar na primeira tentativa em qualquer máquina limpa.
 
 ---
 
-## 💬 6. Modos de Colaboração da IA com o Desenvolvedor
+## 💬 7. Modos de Colaboração da IA com o Desenvolvedor
 
 1. **Transparência nas decisões técnicas:** Ao sugerir uma biblioteca ou arquitetura, justifique o motivo (ex: por que FastEmbed em vez de SentenceTransformers completo).
 2. **Alterações cirúrgicas:** Não reescreva módulos inteiros sem necessidade; preserve comentários explicativos e lógica estável existente.
