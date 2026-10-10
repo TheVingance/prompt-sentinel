@@ -1,11 +1,14 @@
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from src.api.routes.audit import router as audit_router
+from src.api.routes.dashboard import router as dashboard_router
 from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router
 from src.core.config import settings
@@ -67,7 +70,13 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 
+# Montagem de Arquivos Estáticos para a Interface Web
+static_dir = Path(__file__).resolve().parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
 # Registro de Rotas
+app.include_router(dashboard_router)
 app.include_router(health_router)
 app.include_router(proxy_router)
 app.include_router(audit_router)
@@ -78,6 +87,7 @@ async def root() -> dict[str, str]:
     return {
         "service": settings.PROJECT_NAME,
         "status": "operational",
+        "dashboard": "/dashboard",
         "docs": "/docs",
         "health": "/health",
     }
