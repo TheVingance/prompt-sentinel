@@ -11,6 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.database import get_db_session
+from src.core.metrics import (
+    sentinel_cache_hits_total,
+    sentinel_cache_savings_usd_total,
+    sentinel_pii_redacted_total,
+    sentinel_requests_total,
+    sentinel_threats_blocked_total,
+    sentinel_tokens_saved_total,
+)
 from src.models.security import AuditIncident
 from src.pipeline.canary import canary_manager
 from src.pipeline.output_guardrail import output_guardrail
@@ -102,6 +110,14 @@ async def chat_completions(
                 "ignore previous instructions" in content_lower
                 or "ignore all prior instructions" in content_lower
             ):
+                sentinel_threats_blocked_total.labels(
+                    category=ThreatCategory.PROMPT_INJECTION.value,
+                    severity=ThreatSeverity.CRITICAL.value,
+                ).inc()
+                sentinel_requests_total.labels(
+                    model=request_data.model,
+                    status="403",
+                ).inc()
                 incident = SecurityIncidentResponse(
                     incident_id=str(uuid.uuid4()),
                     category=ThreatCategory.PROMPT_INJECTION,
@@ -119,6 +135,9 @@ async def chat_completions(
                 message.content = mask_result.sanitized_text
                 global_redaction_map.update(mask_result.redaction_map)
                 total_pii_redacted += mask_result.total_redacted
+                for entity_placeholder in mask_result.redaction_map:
+                    entity_type = entity_placeholder.strip("[]").rsplit("_REDACTED", 1)[0]
+                    sentinel_pii_redacted_total.labels(entity_type=entity_type).inc()
 
             # Análise Semântica de Injeção no pgvector (Slow-path inteligente)
             is_threat, incident_resp = await semantic_detector.analyze(
@@ -127,6 +146,14 @@ async def chat_completions(
                 client_ip=client_ip,
             )
             if is_threat and incident_resp is not None:
+                sentinel_threats_blocked_total.labels(
+                    category=incident_resp.category.value,
+                    severity=incident_resp.severity.value,
+                ).inc()
+                sentinel_requests_total.labels(
+                    model=request_data.model,
+                    status="403",
+                ).inc()
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=incident_resp.model_dump(mode="json"),
@@ -154,6 +181,15 @@ async def chat_completions(
             model=request_data.model,
         )
         if cache_hit is not None:
+            sentinel_cache_hits_total.labels(model=request_data.model).inc()
+            sentinel_cache_savings_usd_total.labels(model=request_data.model).inc(
+                cache_hit.saved_cost_usd
+            )
+            sentinel_tokens_saved_total.labels(model=request_data.model).inc(
+                cache_hit.prompt_tokens + cache_hit.completion_tokens
+            )
+            sentinel_requests_total.labels(model=request_data.model, status="200").inc()
+
             response.headers["X-Cache-Status"] = "HIT"
             response.headers["X-Cache-Similarity"] = f"{cache_hit.similarity_score:.4f}"
             response.headers["X-Cache-Savings-USD"] = f"${cache_hit.saved_cost_usd:.6f}"
@@ -232,6 +268,16 @@ async def chat_completions(
         # Aplica inspeção de saída com Outbound Guardrails para não-streaming
         guard_res = output_guardrail.inspect_and_sanitize(mock_reply, canary_token)
         if guard_res.is_threat:
+            sentinel_threats_blocked_total.labels(
+                category=guard_res.threat_category.value
+                if guard_res.threat_category
+                else "system_prompt_extraction",
+                severity="critical",
+            ).inc()
+            sentinel_requests_total.labels(
+                model=request_data.model,
+                status="403",
+            ).inc()
             incident_id = str(uuid.uuid4())
             audit_record = AuditIncident(
                 id=uuid.UUID(incident_id),
@@ -274,6 +320,11 @@ async def chat_completions(
             )
 
         unmasked_reply = pii_masker.unmask(mock_reply, global_redaction_map)
+
+        sentinel_requests_total.labels(
+            model=request_data.model,
+            status="200",
+        ).inc()
 
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -380,6 +431,16 @@ async def chat_completions(
                 raw_content = first_choice["message"]["content"]
                 guard_res = output_guardrail.inspect_and_sanitize(raw_content, canary_token)
                 if guard_res.is_threat:
+                    sentinel_threats_blocked_total.labels(
+                        category=guard_res.threat_category.value
+                        if guard_res.threat_category
+                        else "system_prompt_extraction",
+                        severity="critical",
+                    ).inc()
+                    sentinel_requests_total.labels(
+                        model=request_data.model,
+                        status="403",
+                    ).inc()
                     incident_id = str(uuid.uuid4())
                     audit_record = AuditIncident(
                         id=uuid.UUID(incident_id),
@@ -435,5 +496,10 @@ async def chat_completions(
                         choice["message"]["content"],
                         global_redaction_map,
                     )
+
+        sentinel_requests_total.labels(
+            model=request_data.model,
+            status="200",
+        ).inc()
 
         return payload

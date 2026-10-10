@@ -85,12 +85,29 @@ flowchart LR
 
 | Método | Endpoint | Autenticação | Descrição |
 |---|---|---|---|
-| `POST` | `/v1/chat/completions` | `Bearer Token` | Proxy reverso compatível com OpenAI. Aplica rate limit, DLP de PII e detecção semântica de injeção. |
+| `POST` | `/v1/chat/completions` | `Bearer Token` | Proxy reverso compatível com OpenAI. Aplica rate limit, DLP de PII, semantic cache e guardrails. |
 | `GET` | `/v1/audit/incidents` | `Bearer Token` | Consulta paginada da trilha forense de incidentes bloqueados com filtros por severidade e categoria. |
 | `GET` | `/v1/audit/metrics` | `Bearer Token` | Sumário estatístico consolidado (total bloqueado, incidentes 24h, distribuição por categoria e score médio). |
+| `GET` | `/metrics` | Pública | Exportador oficial de telemetria corporativa no formato padrão do **Prometheus**. |
 | `GET` | `/dashboard` | Pública | Interface web com Playground de ataques interativo e monitor de telemetria. |
 | `GET` | `/health` | Pública | Diagnóstico assíncrono de conectividade e latência com PostgreSQL e Redis. |
 | `GET` | `/` | Pública | Metadados do serviço e links de navegação rápida. |
+
+---
+
+## 📊 Observabilidade Corporativa (Prometheus & Grafana)
+
+A plataforma conta com stack completa de monitoramento e telemetria corporativa pré-configurada via Docker Compose:
+
+- **🔥 Prometheus (`:9090`):** Coleta métricas a cada 5s de `sentinel-api:8000/metrics`. Acesse em `http://localhost:9090`.
+- **📈 Grafana (`:3000`):** Painéis executivos com provisionamento automático de datasource e dashboard. Acesse em `http://localhost:3000` (*login:* `admin`, *senha:* `sentinel_admin`).
+
+### Painéis do Dashboard Pré-Provisionado:
+1. **Total de Requisições de IA & RPS:** Taxa de requisições por segundo segregadas por status HTTP (200, 403, 429).
+2. **Ataques Barrados por Categoria OWASP:** Séries temporais de mitigações (`prompt_injection`, `jailbreak`, `system_prompt_extraction`).
+3. **Economia FinOps Acumulada (\$ USD):** Valor financeiro poupado em tempo real pelo Cache Semântico.
+4. **Latência de Borda (P50, P90, P99):** Histogramas detalhando o tempo de resposta do gateway em milissegundos.
+5. **DLP & Proteção de Dados:** Gráfico de pizza com a distribuição de entidades PII identificadas e anonimizadas.
 
 ---
 
@@ -111,10 +128,12 @@ cp .env.example .env
 ```bash
 docker compose up -d --build
 ```
-*O Docker Compose subirá a API FastAPI na porta 8000, o PostgreSQL 16 com extensão `pgvector` na porta 5432 e o Redis 7 na porta 6379 com healthchecks automáticos.*
+*O Docker Compose subirá a API FastAPI (8000), PostgreSQL 16 com `pgvector` (5433->5432), Redis 7 (6379), Prometheus (9090) e Grafana (3000) com provisionamento automático.*
 
-### 3. Acessar a Interface Gráfica
-Abra seu navegador em: **`http://localhost:8000/dashboard`**
+### 3. Acessar os Portais
+- **Dashboard Interativo & Playground:** `http://localhost:8000/dashboard`
+- **Métricas Prometheus:** `http://localhost:8000/metrics` ou `http://localhost:9090`
+- **Painel Executivo Grafana:** `http://localhost:3000` (admin / sentinel_admin)
 
 ### 4. Como Integrar na sua Aplicação Cliente
 Para proteger qualquer aplicação existente que utilize o SDK oficial da OpenAI, basta redirecionar a `base_url`:
