@@ -90,7 +90,11 @@ async def test_audit_metrics_aggregation():
     mock_avg = MagicMock()
     mock_avg.scalar.return_value = 0.885
 
-    mock_db.execute.side_effect = [mock_total, mock_24h, mock_by_cat, mock_by_sev, mock_avg]
+    mock_cache_stats = MagicMock()
+    # (cache_hits, saved_usd, tokens_saved, total_entries)
+    mock_cache_stats.first.return_value = (8, 0.0245, 450, 12)
+
+    mock_db.execute.side_effect = [mock_total, mock_24h, mock_by_cat, mock_by_sev, mock_avg, mock_cache_stats]
 
     app.dependency_overrides[get_db_session] = lambda: mock_db
     try:
@@ -102,6 +106,9 @@ async def test_audit_metrics_aggregation():
         assert data["incidents_last_24h"] == 10
         assert data["by_category"]["jailbreak"] == 30
         assert data["average_similarity_score"] == 0.885
+        assert data["total_cache_hits"] == 8
+        assert data["total_saved_usd"] == 0.0245
+        assert data["total_tokens_saved"] == 450
     finally:
         app.dependency_overrides.pop(get_db_session, None)
 

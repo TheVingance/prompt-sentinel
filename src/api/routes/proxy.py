@@ -10,6 +10,7 @@ from src.core.config import settings
 from src.core.database import get_db_session
 from src.pipeline.pii_masker import pii_masker
 from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
+from src.pipeline.semantic_cache import semantic_cache
 from src.pipeline.semantic_detector import semantic_detector
 from src.schemas.proxy import ChatCompletionRequest, ChatCompletionResponse
 from src.schemas.security import (
@@ -117,12 +118,66 @@ async def chat_completions(
     if total_pii_redacted > 0:
         response.headers["X-PII-Entities-Redacted"] = str(total_pii_redacted)
 
-    # 3. Caso não haja chave upstream configurada (mock em desenvolvimento local)
+    # Identifica o último prompt do usuário para cache semântico
+    user_prompt = next(
+        (m.content for m in reversed(request_data.messages) if m.role == "user" and isinstance(m.content, str)),
+        "",
+    )
+
+    # 3. Verificação no Cache Semântico (FinOps Engine)
+    if user_prompt:
+        cache_hit = await semantic_cache.get(
+            session=db,
+            prompt=user_prompt,
+            model=request_data.model,
+        )
+        if cache_hit is not None:
+            response.headers["X-Cache-Status"] = "HIT"
+            response.headers["X-Cache-Similarity"] = f"{cache_hit.similarity_score:.4f}"
+            response.headers["X-Cache-Savings-USD"] = f"${cache_hit.saved_cost_usd:.6f}"
+
+            cached_reply = pii_masker.unmask(cache_hit.response_text, global_redaction_map)
+
+            return ChatCompletionResponse(
+                id=f"chatcmpl-cache-{uuid.uuid4().hex[:10]}",
+                created=int(time.time()),
+                model=request_data.model,
+                choices=[
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": cached_reply,
+                        },
+                        "finish_reason": "stop",
+                    }
+                ],
+                usage={
+                    "prompt_tokens": cache_hit.prompt_tokens,
+                    "completion_tokens": cache_hit.completion_tokens,
+                    "total_tokens": cache_hit.prompt_tokens + cache_hit.completion_tokens,
+                },
+            )
+
+    response.headers["X-Cache-Status"] = "MISS"
+
+    # 4. Caso não haja chave upstream configurada (mock em desenvolvimento local)
     if not settings.TARGET_LLM_API_KEY:
         mock_reply = "🛡️ [PromptSentinel Mock] Mensagem analisada e aprovada pelo firewall de IA!"
         if global_redaction_map:
             first_placeholder = next(iter(global_redaction_map))
             mock_reply += f" Entidade detectada: {first_placeholder}"
+
+        # Popula o cache semântico com a resposta gerada
+        if user_prompt:
+            await semantic_cache.set(
+                session=db,
+                prompt=user_prompt,
+                response=mock_reply,
+                model=request_data.model,
+                prompt_tokens=15,
+                completion_tokens=28,
+            )
 
         unmasked_reply = pii_masker.unmask(mock_reply, global_redaction_map)
 
@@ -147,7 +202,7 @@ async def chat_completions(
             },
         )
 
-    # 4. Repasse upstream assíncrono caso chave esteja configurada
+    # 5. Repasse upstream assíncrono caso chave esteja configurada
     async with httpx.AsyncClient(timeout=60.0) as client:
         upstream_url = f"{settings.TARGET_LLM_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
@@ -167,6 +222,22 @@ async def chat_completions(
             )
 
         payload = res.json()
+
+        # Popula o cache semântico com a resposta upstream
+        if user_prompt and "choices" in payload and payload["choices"]:
+            first_choice = payload["choices"][0]
+            if "message" in first_choice and "content" in first_choice["message"]:
+                raw_content = first_choice["message"]["content"]
+                usage = payload.get("usage", {})
+                await semantic_cache.set(
+                    session=db,
+                    prompt=user_prompt,
+                    response=raw_content,
+                    model=request_data.model,
+                    prompt_tokens=usage.get("prompt_tokens", 15),
+                    completion_tokens=usage.get("completion_tokens", 30),
+                )
+
         if global_redaction_map and "choices" in payload:
             for choice in payload["choices"]:
                 if "message" in choice and "content" in choice["message"]:

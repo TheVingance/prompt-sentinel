@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.routes.proxy import verify_api_key
 from src.core.database import get_db_session
+from src.models.cache import SemanticCacheEntry
 from src.models.security import AuditIncident
 from src.schemas.audit import (
     AuditIncidentItem,
@@ -111,10 +112,31 @@ async def get_audit_metrics(
     avg_score_res = await db.execute(select(func.avg(AuditIncident.similarity_score)))
     avg_similarity = avg_score_res.scalar() or 0.0
 
+    # 6. Métricas FinOps & Cache Semântico
+    cache_stats_stmt = select(
+        func.coalesce(func.sum(SemanticCacheEntry.hit_count - 1), 0),
+        func.coalesce(func.sum(SemanticCacheEntry.cost_saved_usd), 0.0),
+        func.coalesce(func.sum((SemanticCacheEntry.hit_count - 1) * (SemanticCacheEntry.prompt_tokens + SemanticCacheEntry.completion_tokens)), 0),
+        func.count(SemanticCacheEntry.id),
+    )
+    cache_stats_res = await db.execute(cache_stats_stmt)
+    cache_row = cache_stats_res.first()
+    cache_hits = int(cache_row[0]) if cache_row else 0
+    saved_usd = float(cache_row[1]) if cache_row else 0.0
+    tokens_saved = int(cache_row[2]) if cache_row else 0
+    total_entries = int(cache_row[3]) if cache_row else 0
+
+    total_requests = total_entries + cache_hits
+    hit_ratio = round(cache_hits / total_requests, 4) if total_requests > 0 else 0.0
+
     return AuditMetricsResponse(
         total_incidents_recorded=total_incidents,
         incidents_last_24h=incidents_24h,
         by_category=by_category,
         by_severity=by_severity,
         average_similarity_score=round(float(avg_similarity), 4),
+        total_cache_hits=cache_hits,
+        cache_hit_ratio=hit_ratio,
+        total_saved_usd=round(saved_usd, 4),
+        total_tokens_saved=tokens_saved,
     )

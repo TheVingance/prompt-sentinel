@@ -47,3 +47,6 @@ Thumbs.db
 # Database / Local storage
 *.sqlite3
 pgdata/
+
+# Documentação de Roadmap e Notas Locais
+ROADMAP_ENTERPRISE.md
