@@ -40,7 +40,7 @@ class EmbeddingService:
         words = clean_text.split()
 
         # Projeção de palavras e pares de palavras (bigramas)
-        tokens = words + [f"{words[i]}_{words[i+1]}" for i in range(len(words) - 1)]
+        tokens = words + [f"{words[i]}_{words[i + 1]}" for i in range(len(words) - 1)]
         if not tokens:
             tokens = [clean_text]
 

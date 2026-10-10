@@ -8,7 +8,9 @@ router = APIRouter(tags=["Interactive Dashboard"])
 TEMPLATE_PATH = Path(__file__).resolve().parent.parent.parent / "templates" / "dashboard.html"
 
 
-@router.get("/dashboard", response_class=HTMLResponse, summary="Dashboard Web Interativo de Segurança")
+@router.get(
+    "/dashboard", response_class=HTMLResponse, summary="Dashboard Web Interativo de Segurança"
+)
 async def get_dashboard() -> HTMLResponse:
     """Retorna a interface web do PromptSentinel com Playground de ataques e telemetria de incidentes."""
     if TEMPLATE_PATH.exists():

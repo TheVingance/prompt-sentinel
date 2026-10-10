@@ -32,7 +32,8 @@ Aplicações corporativas integradas a modelos fundacionais (LLMs) enfrentam vet
 - **LLM01: Prompt Injection & Jailbreaks** — Detecção semântica por similaridade de cosseno via **`pgvector`** contra assinaturas de jailbreak conhecidas (DAN, Developer Mode, AIM, etc.).
 - **LLM02: Sensitive Information Disclosure (PII / DLP)** — Detecção e mascaramento bidirecional transparente de CPFs, e-mails, telefones, chaves de API e **cartões de crédito validados com o algoritmo de Luhn (Módulo 10)**.
 - **LLM04: Model Denial of Service** — Rate limiting distribuído em **Redis** através do algoritmo de **Janela Deslizante (*Sliding Window*)**, mitigando ataques de exaustão de cota de tokens.
-- **LLM06: Excessive Agency / Insecure Output Handling** — Desanonimização segura no retorno para que modelos em nuvem nunca recebam dados reais confidenciais.
+- **LLM06: Insecure Output Handling** — Outbound Guardrails inspecionando respostas geradas antes da entrega ao cliente final, bloqueando comandos destrutivos (`rm -rf /`, bash reverse shells via `/dev/tcp`) e dados confidenciais.
+- **LLM07: System Prompt Leakage** — **Canary Token Honeypotting** com injeção dinâmica de segredos unívocos rastreáveis. Caso um jailbreak force a exfiltração do system prompt, o vazamento é interceptado com **0% de falsos positivos**, cortando streams em voo (*In-Flight Safety Severing*).
 
 ---
 
@@ -46,10 +47,11 @@ http://localhost:8000/dashboard
 
 ### Funcionalidades da Interface:
 1. **🧪 Playground de Ataques em Tempo Real:**
-   - Botões de teste rápido com 1 clique: *"Prompt Benigno"*, *"Vazamento de PII (CPF + Cartão)"*, *"Ataque DAN Jailbreak"*, *"Extração de System Prompt"*.
-   - Resposta visual com indicador de status (`200 OK Seguro`, `403 Bloqueado` ou `429 Rate Limit`), latência em milissegundos e entidades PII mascaradas.
+   - Botões de teste rápido com 1 clique: *"Prompt Benigno"*, *"Testar Cache Hit (FinOps)"*, *"Vazamento de PII (CPF + Cartão)"*, *"Ataque DAN Jailbreak"*, *"Roubo de System Prompt (Canary Token)"*, *"Extração de System Prompt"*.
+   - Toggle para **Streaming SSE Real-time** com demonstração de **In-Flight Safety Severing** ao vivo.
+   - Resposta visual com indicador de status (`200 OK Seguro`, `403 Bloqueado` ou `429 Rate Limit`), latência em milissegundos, economia FinOps e entidades PII mascaradas.
 2. **📊 Telemetria ao Vivo & KPIs:**
-   - Contadores consolidados de ameaças bloqueadas, incidentes nas últimas 24h e média de similaridade vetorial.
+   - Contadores consolidados de ameaças bloqueadas, incidentes nas últimas 24h, métricas FinOps e economia em USD acumulada.
    - Trilha de auditoria ao vivo alimentada diretamente pela tabela `audit_incidents` no PostgreSQL.
 
 ---
@@ -121,14 +123,10 @@ Para proteger qualquer aplicação existente que utilize o SDK oficial da OpenAI
 from openai import OpenAI
 
 # Redireciona para o PromptSentinel
-client = OpenAI(
-    base_url="http://localhost:8000/v1",
-    api_key="sentinel-default-local-key"
-)
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="sentinel-default-local-key")
 
 response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Meu CPF é 123.456.789-00."}]
+    model="gpt-4o-mini", messages=[{"role": "user", "content": "Meu CPF é 123.456.789-00."}]
 )
 
 print(response.choices[0].message.content)

@@ -15,6 +15,6 @@ def test_readme_documented_endpoints_exist():
     ]
 
     for expected_path in expected_routes:
-        assert (
-            expected_path in registered_routes
-        ), f"Rota documentada no README '{expected_path}' não foi encontrada na aplicação!"
+        assert expected_path in registered_routes, (
+            f"Rota documentada no README '{expected_path}' não foi encontrada na aplicação!"
+        )

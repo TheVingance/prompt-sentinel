@@ -10,8 +10,12 @@ class ChatMessage(BaseModel):
 
 
 class ChatCompletionRequest(BaseModel):
-    model: str = Field(..., description="Identificador do modelo LLM (ex: gpt-4o, claude-3-5-sonnet, llama3)")
-    messages: list[ChatMessage] = Field(..., min_length=1, description="Lista de mensagens de histórico e prompt")
+    model: str = Field(
+        ..., description="Identificador do modelo LLM (ex: gpt-4o, claude-3-5-sonnet, llama3)"
+    )
+    messages: list[ChatMessage] = Field(
+        ..., min_length=1, description="Lista de mensagens de histórico e prompt"
+    )
     temperature: float | None = Field(default=0.7, ge=0.0, le=2.0)
     top_p: float | None = Field(default=1.0, ge=0.0, le=1.0)
     n: int | None = Field(default=1, ge=1)
@@ -19,7 +23,9 @@ class ChatCompletionRequest(BaseModel):
     max_tokens: int | None = Field(default=None, gt=0)
     presence_penalty: float | None = 0.0
     frequency_penalty: float | None = 0.0
-    user: str | None = Field(default=None, description="Identificador único do usuário final para rate limit")
+    user: str | None = Field(
+        default=None, description="Identificador único do usuário final para rate limit"
+    )
 
 
 class ChatChoice(BaseModel):

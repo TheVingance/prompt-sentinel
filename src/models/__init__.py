@@ -1,4 +1,5 @@
 """Database models."""
+
 from src.models.cache import SemanticCacheEntry
 from src.models.security import AttackSignature, AuditIncident
 

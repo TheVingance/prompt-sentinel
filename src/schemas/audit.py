@@ -26,12 +26,22 @@ class AuditIncidentsResponse(BaseModel):
 class AuditMetricsResponse(BaseModel):
     total_incidents_recorded: int = Field(..., description="Total histórico de ameaças bloqueadas")
     incidents_last_24h: int = Field(..., description="Ameaças bloqueadas nas últimas 24 horas")
-    by_category: dict[str, int] = Field(default_factory=dict, description="Distribuição por categoria OWASP")
-    by_severity: dict[str, int] = Field(default_factory=dict, description="Distribuição por gravidade")
-    average_similarity_score: float = Field(default=0.0, description="Média de similaridade dos ataques semânticos")
+    by_category: dict[str, int] = Field(
+        default_factory=dict, description="Distribuição por categoria OWASP"
+    )
+    by_severity: dict[str, int] = Field(
+        default_factory=dict, description="Distribuição por gravidade"
+    )
+    average_similarity_score: float = Field(
+        default=0.0, description="Média de similaridade dos ataques semânticos"
+    )
 
     # Métricas FinOps & Cache Semântico
-    total_cache_hits: int = Field(default=0, description="Total de requisições servidas via cache semântico")
+    total_cache_hits: int = Field(
+        default=0, description="Total de requisições servidas via cache semântico"
+    )
     cache_hit_ratio: float = Field(default=0.0, description="Taxa percentual de acerto no cache")
-    total_saved_usd: float = Field(default=0.0, description="Economia financeira total estimada em USD")
+    total_saved_usd: float = Field(
+        default=0.0, description="Economia financeira total estimada em USD"
+    )
     total_tokens_saved: int = Field(default=0, description="Total de tokens LLM poupados")
