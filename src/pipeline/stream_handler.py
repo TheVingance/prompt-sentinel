@@ -7,6 +7,7 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.core.metrics import sentinel_threats_blocked_total
 from src.models.security import AuditIncident
 from src.pipeline.pii_masker import pii_masker
 
@@ -104,6 +105,10 @@ class StreamInspector:
                 # 1. Checagem de Canary Token Leak em voo
                 if self.canary_token and self.canary_token in self.buffer:
                     self.severed = True
+                    sentinel_threats_blocked_total.labels(
+                        category="system_prompt_extraction",
+                        severity="critical",
+                    ).inc()
                     incident_id = await self._record_severing_incident(
                         self.buffer,
                         reason=f"In-Flight Canary Token Severing: O modelo vazou o canary token secreto '{self.canary_token}'",
@@ -122,6 +127,10 @@ class StreamInspector:
                 window = self.buffer[-150:]
                 if self._check_in_flight_violation(window):
                     self.severed = True
+                    sentinel_threats_blocked_total.labels(
+                        category="pii_leakage",
+                        severity="critical",
+                    ).inc()
                     incident_id = await self._record_severing_incident(self.buffer)
 
                     # Emite mensagem de interrupção de segurança em voo

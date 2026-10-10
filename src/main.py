@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -13,6 +13,11 @@ from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router
 from src.core.config import settings
 from src.core.database import async_session_factory, close_db, init_db
+from src.core.metrics import (
+    CONTENT_TYPE_LATEST,
+    get_prometheus_metrics,
+    sentinel_request_duration_seconds,
+)
 from src.core.redis import close_redis_pool, init_redis_pool
 from src.services.seed import seed_attack_signatures
 
@@ -67,8 +72,13 @@ async def add_process_time_header(request: Request, call_next):
     """Calcula e adiciona o tempo de processamento em milissegundos para auditoria e benchmark."""
     start_time = time.perf_counter()
     response = await call_next(request)
-    process_time_ms = (time.perf_counter() - start_time) * 1000
+    duration_s = time.perf_counter() - start_time
+    process_time_ms = duration_s * 1000
     response.headers["X-Process-Time-Ms"] = f"{process_time_ms:.2f}"
+
+    # Registra a latência no histograma Prometheus
+    endpoint = request.url.path
+    sentinel_request_duration_seconds.labels(endpoint=endpoint).observe(duration_s)
     return response
 
 
@@ -84,6 +94,15 @@ app.include_router(proxy_router)
 app.include_router(audit_router)
 
 
+@app.get("/metrics", tags=["Observabilidade"])
+async def metrics_endpoint() -> Response:
+    """Exporta métricas corporativas no formato padrão do Prometheus para raspagem (scraping)."""
+    return Response(
+        content=get_prometheus_metrics(),
+        media_type=CONTENT_TYPE_LATEST,
+    )
+
+
 @app.get("/", tags=["Root"])
 async def root() -> dict[str, str]:
     return {
@@ -92,4 +111,5 @@ async def root() -> dict[str, str]:
         "dashboard": "/dashboard",
         "docs": "/docs",
         "health": "/health",
+        "metrics": "/metrics",
     }

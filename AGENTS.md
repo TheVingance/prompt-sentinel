@@ -72,6 +72,36 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 - **Framework de Teste:** `pytest` com `pytest-asyncio`.
 - **Métricas de Performance:** Ao implementar gargalos ou otimizações críticas, meça o tempo de execução e documente o impacto (latência em milissegundos).
 
+### 🔄 Protocolo de Autonomia de Testes e Auto-Cura (Self-Healing Loop)
+> **Regra Fundamental de Execução:** *"Encontrou um problema? Corrija. Achou um bug? Resolva."*
+- **Autonomia na Correção:** O Agente de IA possui autorização e autonomia para diagnosticar e sanar falhas técnicas, quebras de testes unitários ou de integração, regressões, avisos do linter (`ruff`) e incompatibilidades de ambiente/infraestrutura de forma contínua e autônoma.
+- **Resolução Sem Paradas Desnecessárias:** Diante de erros detectados durante a execução de testes ou compilação, o Agente **NÃO DEVE** interromper o fluxo operacional para pedir permissão sobre correções de bugs técnicos evidentes. Deve aplicar a correção cirúrgica, reexecutar a verificação e seguir até a validação plena da suíte de testes.
+
+### 🛡️ Salvaguardas Críticas de Governança, Contenção e Segurança (Guardrails da Auto-Cura)
+Para mitigar riscos de **alucinação em cascata**, **deriva arquitetural (*architectural drift*)** e **degradação silenciosa da segurança**, o Protocolo de Auto-Cura está subordinado aos seguintes controles inegociáveis:
+
+1. **🚫 Anti-Tampering de Testes (Proibição de Suavização de Asserções):**
+   - É **terminantemente proibido** contornar falhas alterando ou enfraquecendo asserções de testes para "forçar aprovação" (*Assertion Softening*).
+   - É **proibido** deletar testes válidos, comentar blocos de teste ou aplicar decoradores como `@pytest.mark.skip` ou `@pytest.mark.xfail` sem autorização humana formal.
+   - **A cura DEVE ocorrer na lógica do código produtivo (`src/`)**. Ajustes na pasta `tests/` são estritamente limitados à correção de tipagens, imports quebrados, nomes de classes atualizados ou fixtures incompatíveis decorrentes da evolução autorizada.
+
+2. **⚡ Circuit Breaker de Auto-Cura (Limite Anti-Alucinação em Cascata):**
+   - O loop autônomo possui um teto máximo de **3 iterações consecutivas de tentativa de cura** para a mesma falha ou grupo de falhas correlacionadas.
+   - Se o problema não for sanado na 3ª iteração, ou se ocorrer um "efeito gangorra" (a correção do teste X quebrar os testes Y e Z), o circuito **DEVE ABRIR IMEDIATAMENTE**: o agente interrompe o loop, reverte para o último estado estável da branch, documenta a causa-raiz identificada e as tentativas realizadas, escalando a decisão para o desenvolvedor humano.
+
+3. **🎯 Contenção Rígida do Raio de Explosão (*Blast Radius Containment*):**
+   - **Escopo Cirúrgico:** Toda modificação corretiva deve restringir-se ao menor escopo possível necessário para resolver a falha.
+   - **Inviolabilidade de Configurações de Qualidade:** É **proibido** desabilitar regras de lint no `pyproject.toml`, ignorar linters (`# noqa`, `# type: ignore`) de forma generalizada ou flexibilizar thresholds de segurança/performance para mascarar problemas.
+   - **Inviolabilidade de Segredos e Dados:** Sob hipótese alguma uma ação de autocura pode criar credenciais hardcoded, desativar sanitizadores de PII ou alterar variáveis do `.env`.
+
+4. **🚦 Gateways de Validação Estrita em CI/CD (*Quality Gates*):**
+   - **100% Green Suite:** Apenas alterações que alcancem saída limpa (`exit code 0`) em 100% dos testes unitários e de integração são elegíveis para commit.
+   - **Zero Linter Warnings:** `ruff check .` e `ruff format --check .` devem reportar 0 avisos e 0 erros.
+   - **Sanidade de Contêineres:** Nenhuma correção é válida se inviabilizar o build limpo das imagens Docker ou a inicialização íntegra dos serviços dependentes.
+
+5. **📜 Rastreabilidade e Transparência Operacional:**
+   - Toda autocura realizada autonomamente deve ser explicitada no resumo da Pull Request ou resposta ao desenvolvedor, discriminando: **[Falha Identificada]**, **[Causa-Raiz Diagnosticada]** e **[Ação Corretiva Cirúrgica Aplicada]**.
+
 ---
 
 ## 📦 5. Commits Semânticos

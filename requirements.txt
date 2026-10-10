@@ -9,6 +9,7 @@ sqlalchemy>=2.0.30
 greenlet>=3.0.0
 pgvector>=0.2.5
 numpy>=1.26.0
+prometheus-client>=0.20.0
 
 # Ferramentas de desenvolvimento e testes
 pytest>=8.2.0
