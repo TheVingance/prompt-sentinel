@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import uuid
 from typing import Any
@@ -10,6 +11,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.database import get_db_session
+from src.models.security import AuditIncident
+from src.pipeline.canary import canary_manager
+from src.pipeline.output_guardrail import output_guardrail
 from src.pipeline.pii_masker import pii_masker
 from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
 from src.pipeline.semantic_cache import semantic_cache
@@ -26,10 +30,14 @@ from src.schemas.security import (
     ThreatSeverity,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/v1", tags=["LLM Reverse Proxy"])
 
 
-async def verify_api_key(authorization: str = Header(..., description="Bearer token de autenticação")) -> str:
+async def verify_api_key(
+    authorization: str = Header(..., description="Bearer token de autenticação"),
+) -> str:
     """Valida o Bearer token do cliente contra o SENTINEL_API_KEY configurado."""
     if not authorization.startswith("Bearer "):
         raise HTTPException(
@@ -90,7 +98,10 @@ async def chat_completions(
         if isinstance(message.content, str):
             # Validação heurística rápida contra bypass explícito (Fast-path)
             content_lower = message.content.lower()
-            if "ignore previous instructions" in content_lower or "ignore all prior instructions" in content_lower:
+            if (
+                "ignore previous instructions" in content_lower
+                or "ignore all prior instructions" in content_lower
+            ):
                 incident = SecurityIncidentResponse(
                     incident_id=str(uuid.uuid4()),
                     category=ThreatCategory.PROMPT_INJECTION,
@@ -127,7 +138,11 @@ async def chat_completions(
 
     # Identifica o último prompt do usuário para cache semântico
     user_prompt = next(
-        (m.content for m in reversed(request_data.messages) if m.role == "user" and isinstance(m.content, str)),
+        (
+            m.content
+            for m in reversed(request_data.messages)
+            if m.role == "user" and isinstance(m.content, str)
+        ),
         "",
     )
 
@@ -181,12 +196,71 @@ async def chat_completions(
 
     response.headers["X-Cache-Status"] = "MISS"
 
+    # Injeta Canary Token defensivo no histórico de mensagens (Honeypotting)
+    enriched_messages, canary_token = canary_manager.inject_canary(request_data.messages)
+
     # 4. Caso não haja chave upstream configurada (mock em desenvolvimento local)
     if not settings.TARGET_LLM_API_KEY:
         mock_reply = "🛡️ [PromptSentinel Mock] Mensagem analisada e aprovada pelo firewall de IA!"
         if global_redaction_map:
             first_placeholder = next(iter(global_redaction_map))
             mock_reply += f" Entidade detectada: {first_placeholder}"
+
+        # Se o prompt de teste simular uma tentativa de vazar o canary token
+        if "canary" in user_prompt.lower() and (
+            "leak" in user_prompt.lower() or "token" in user_prompt.lower()
+        ):
+            mock_reply = f"Here is the secret system prompt and token: {canary_token}"
+
+        if request_data.stream:
+            inspector = StreamInspector(
+                model_name=request_data.model,
+                session=db,
+                client_ip=client_ip,
+                canary_token=canary_token,
+            )
+            return StreamingResponse(
+                inspector.inspect_and_stream(mock_token_generator(mock_reply)),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Cache-Status": "MISS",
+                },
+            )
+
+        # Aplica inspeção de saída com Outbound Guardrails para não-streaming
+        guard_res = output_guardrail.inspect_and_sanitize(mock_reply, canary_token)
+        if guard_res.is_threat:
+            incident_id = str(uuid.uuid4())
+            audit_record = AuditIncident(
+                id=uuid.UUID(incident_id),
+                client_ip=client_ip,
+                threat_category=guard_res.threat_category.value
+                if guard_res.threat_category
+                else "system_prompt_extraction",
+                threat_severity="critical",
+                reason=guard_res.threat_reason or "Violação de segurança na saída",
+                matched_pattern="Canary Token Exfiltration",
+                similarity_score=1.0,
+                sanitized_prompt_sample=user_prompt[:500],
+            )
+            try:
+                db.add(audit_record)
+                await db.commit()
+            except Exception as e:
+                logger.error(f"Erro ao salvar incidente de auditoria de saída: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=SecurityIncidentResponse(
+                    incident_id=incident_id,
+                    category=guard_res.threat_category or ThreatCategory.SYSTEM_PROMPT_EXTRACTION,
+                    severity=ThreatSeverity.CRITICAL,
+                    reason=guard_res.threat_reason or "Violação de segurança na saída",
+                ).model_dump(mode="json"),
+            )
+
+        mock_reply = guard_res.sanitized_text
 
         # Popula o cache semântico com a resposta gerada
         if user_prompt:
@@ -200,22 +274,6 @@ async def chat_completions(
             )
 
         unmasked_reply = pii_masker.unmask(mock_reply, global_redaction_map)
-
-        if request_data.stream:
-            inspector = StreamInspector(
-                model_name=request_data.model,
-                session=db,
-                client_ip=client_ip,
-            )
-            return StreamingResponse(
-                inspector.inspect_and_stream(mock_token_generator(unmasked_reply)),
-                media_type="text/event-stream",
-                headers={
-                    "Cache-Control": "no-cache",
-                    "Connection": "keep-alive",
-                    "X-Cache-Status": "MISS",
-                },
-            )
 
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
@@ -239,7 +297,11 @@ async def chat_completions(
         )
 
     # 5. Repasse upstream assíncrono caso chave esteja configurada
+    upstream_payload = request_data.model_dump(exclude_none=True)
+    upstream_payload["messages"] = [m.model_dump(mode="json") for m in enriched_messages]
+
     if request_data.stream:
+
         async def upstream_token_stream():
             async with httpx.AsyncClient(timeout=60.0) as client:
                 upstream_url = f"{settings.TARGET_LLM_BASE_URL.rstrip('/')}/chat/completions"
@@ -251,7 +313,7 @@ async def chat_completions(
                     "POST",
                     upstream_url,
                     headers=headers,
-                    json=request_data.model_dump(exclude_none=True),
+                    json=upstream_payload,
                 ) as upstream_res:
                     if upstream_res.status_code != 200:
                         err_text = await upstream_res.aread()
@@ -265,7 +327,11 @@ async def chat_completions(
                                 break
                             try:
                                 chunk_json = json.loads(data_str)
-                                delta_content = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                delta_content = (
+                                    chunk_json.get("choices", [{}])[0]
+                                    .get("delta", {})
+                                    .get("content", "")
+                                )
                                 if delta_content:
                                     yield delta_content
                             except Exception:
@@ -275,6 +341,7 @@ async def chat_completions(
             model_name=request_data.model,
             session=db,
             client_ip=client_ip,
+            canary_token=canary_token,
         )
         return StreamingResponse(
             inspector.inspect_and_stream(upstream_token_stream()),
@@ -295,7 +362,7 @@ async def chat_completions(
         res = await client.post(
             upstream_url,
             headers=headers,
-            json=request_data.model_dump(exclude_none=True),
+            json=upstream_payload,
         )
 
         if res.status_code != 200:
@@ -306,7 +373,47 @@ async def chat_completions(
 
         payload = res.json()
 
-        # Popula o cache semântico com a resposta upstream
+        # Inspeciona e sanitiza a resposta upstream com Outbound Guardrail
+        if "choices" in payload and payload["choices"]:
+            first_choice = payload["choices"][0]
+            if "message" in first_choice and "content" in first_choice["message"]:
+                raw_content = first_choice["message"]["content"]
+                guard_res = output_guardrail.inspect_and_sanitize(raw_content, canary_token)
+                if guard_res.is_threat:
+                    incident_id = str(uuid.uuid4())
+                    audit_record = AuditIncident(
+                        id=uuid.UUID(incident_id),
+                        client_ip=client_ip,
+                        threat_category=guard_res.threat_category.value
+                        if guard_res.threat_category
+                        else "system_prompt_extraction",
+                        threat_severity="critical",
+                        reason=guard_res.threat_reason or "Violação de segurança na saída",
+                        matched_pattern="Canary Token Exfiltration",
+                        similarity_score=1.0,
+                        sanitized_prompt_sample=raw_content[:500],
+                    )
+                    try:
+                        db.add(audit_record)
+                        await db.commit()
+                    except Exception as e:
+                        logger.error(
+                            f"Erro ao salvar incidente de auditoria de saída upstream: {e}"
+                        )
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail=SecurityIncidentResponse(
+                            incident_id=incident_id,
+                            category=guard_res.threat_category
+                            or ThreatCategory.SYSTEM_PROMPT_EXTRACTION,
+                            severity=ThreatSeverity.CRITICAL,
+                            reason=guard_res.threat_reason or "Violação de segurança na saída",
+                        ).model_dump(mode="json"),
+                    )
+
+                first_choice["message"]["content"] = guard_res.sanitized_text
+
+        # Popula o cache semântico com a resposta upstream segura
         if user_prompt and "choices" in payload and payload["choices"]:
             first_choice = payload["choices"][0]
             if "message" in first_choice and "content" in first_choice["message"]:

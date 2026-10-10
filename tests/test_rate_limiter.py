@@ -53,7 +53,10 @@ async def test_proxy_returns_429_when_rate_limit_exceeded():
         reset_seconds=45,
     )
 
-    with patch("src.pipeline.rate_limiter.rate_limiter.is_allowed", new=AsyncMock(return_value=mocked_result)):
+    with patch(
+        "src.pipeline.rate_limiter.rate_limiter.is_allowed",
+        new=AsyncMock(return_value=mocked_result),
+    ):
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
             response = await ac.post("/v1/chat/completions", json=payload, headers=headers)
 

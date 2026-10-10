@@ -104,7 +104,11 @@ async def check_rate_limit(request: Request) -> RateLimitResult:
     """Dependency do FastAPI que extrai o identificador do cliente e valida o rate limit."""
     # Prioriza IP real via headers de proxy reverso (ex: Cloudflare, Traefik, Nginx)
     forwarded = request.headers.get("X-Forwarded-For")
-    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "127.0.0.1")
+    client_ip = (
+        forwarded.split(",")[0].strip()
+        if forwarded
+        else (request.client.host if request.client else "127.0.0.1")
+    )
 
     # Identificador único por IP ou token
     identifier = f"ip:{client_ip}"

@@ -79,7 +79,10 @@ async def test_proxy_semantic_cache_miss_then_hit(monkeypatch):
 
     data = response_hit.json()
     assert "choices" in data
-    assert data["choices"][0]["message"]["content"] == "Resposta recuperada do cache semântico com pgvector."
+    assert (
+        data["choices"][0]["message"]["content"]
+        == "Resposta recuperada do cache semântico com pgvector."
+    )
 
 
 @pytest.mark.asyncio
@@ -105,7 +108,14 @@ async def test_audit_metrics_includes_finops():
     mock_cache = MagicMock()
     mock_cache.first.return_value = (15, 0.0450, 600, 20)
 
-    mock_db.execute.side_effect = [mock_total, mock_24h, mock_by_cat, mock_by_sev, mock_avg, mock_cache]
+    mock_db.execute.side_effect = [
+        mock_total,
+        mock_24h,
+        mock_by_cat,
+        mock_by_sev,
+        mock_avg,
+        mock_cache,
+    ]
 
     app.dependency_overrides[get_db_session] = lambda: mock_db
     try:

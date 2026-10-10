@@ -94,7 +94,14 @@ async def test_audit_metrics_aggregation():
     # (cache_hits, saved_usd, tokens_saved, total_entries)
     mock_cache_stats.first.return_value = (8, 0.0245, 450, 12)
 
-    mock_db.execute.side_effect = [mock_total, mock_24h, mock_by_cat, mock_by_sev, mock_avg, mock_cache_stats]
+    mock_db.execute.side_effect = [
+        mock_total,
+        mock_24h,
+        mock_by_cat,
+        mock_by_sev,
+        mock_avg,
+        mock_cache_stats,
+    ]
 
     app.dependency_overrides[get_db_session] = lambda: mock_db
     try:

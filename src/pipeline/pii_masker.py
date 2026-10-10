@@ -49,23 +49,15 @@ class PIIMasker:
     """
 
     # Expressões regulares compiladas para máxima performance (< 1ms por prompt)
-    EMAIL_REGEX = re.compile(
-        r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b"
-    )
+    EMAIL_REGEX = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
 
-    CPF_REGEX = re.compile(
-        r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b"
-    )
+    CPF_REGEX = re.compile(r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b")
 
     # Telefone com DDD obrigatório (com ou sem código do país +55)
-    PHONE_REGEX = re.compile(
-        r"\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:9\s?)?\d{4}[-.\s]?\d{4}\b"
-    )
+    PHONE_REGEX = re.compile(r"\b(?:\+?55\s?)?(?:\(?\d{2}\)?\s?)(?:9\s?)?\d{4}[-.\s]?\d{4}\b")
 
     # Formatos de 16 dígitos separados por espaço/traço ou 13 a 19 dígitos contínuos
-    CREDIT_CARD_REGEX = re.compile(
-        r"\b(?:\d{4}[-\s]){3}\d{4}\b|\b\d{13,19}\b"
-    )
+    CREDIT_CARD_REGEX = re.compile(r"\b(?:\d{4}[-\s]){3}\d{4}\b|\b\d{13,19}\b")
 
     # API keys da OpenAI (incluindo sk-proj-), GitHub tokens, Slack e JWT
     API_KEY_REGEX = re.compile(

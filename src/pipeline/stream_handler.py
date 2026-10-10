@@ -25,10 +25,12 @@ class StreamInspector:
         model_name: str = "gpt-4o",
         session: AsyncSession | None = None,
         client_ip: str = "127.0.0.1",
+        canary_token: str | None = None,
     ):
         self.model_name = model_name
         self.session = session
         self.client_ip = client_ip
+        self.canary_token = canary_token
         self.stream_id = f"chatcmpl-stream-{uuid.uuid4().hex[:12]}"
         self.buffer = ""
         self.severed = False
@@ -60,7 +62,13 @@ class StreamInspector:
                     return True
         return False
 
-    async def _record_severing_incident(self, leaked_sample: str) -> str:
+    async def _record_severing_incident(
+        self,
+        leaked_sample: str,
+        reason: str = "In-Flight Safety Severing: O modelo upstream começou a emitir dados sensíveis não autorizados",
+        pattern: str = "Credit Card / API Key Exfiltration",
+        category: str = "pii_leakage",
+    ) -> str:
         """Registra o incidente de corte forçado na trilha de auditoria."""
         incident_id = str(uuid.uuid4())
         if self.session is not None:
@@ -68,10 +76,10 @@ class StreamInspector:
                 incident = AuditIncident(
                     id=uuid.UUID(incident_id),
                     client_ip=self.client_ip,
-                    threat_category="pii_leakage",
+                    threat_category=category,
                     threat_severity="critical",
-                    reason="In-Flight Safety Severing: O modelo upstream começou a emitir dados sensíveis não autorizados",
-                    matched_pattern="Credit Card / API Key Exfiltration",
+                    reason=reason,
+                    matched_pattern=pattern,
                     similarity_score=1.0,
                     sanitized_prompt_sample=leaked_sample[:500],
                 )
@@ -93,7 +101,24 @@ class StreamInspector:
                 self.buffer += token
                 full_generated_text.append(token)
 
-                # Mantém uma janela deslizante dos últimos 150 caracteres para avaliação
+                # 1. Checagem de Canary Token Leak em voo
+                if self.canary_token and self.canary_token in self.buffer:
+                    self.severed = True
+                    incident_id = await self._record_severing_incident(
+                        self.buffer,
+                        reason=f"In-Flight Canary Token Severing: O modelo vazou o canary token secreto '{self.canary_token}'",
+                        pattern="Canary Token Exfiltration",
+                        category="system_prompt_extraction",
+                    )
+                    sever_msg = (
+                        f"\n\n🚨 [TRANSMISSÃO INTERROMPIDA PELO PROMPT SENTINEL: "
+                        f"Roubo de System Prompt interceptado via Canary Token (Incident ID: {incident_id})]\n"
+                    )
+                    yield self._format_chunk(content=sever_msg, finish_reason="security_override")
+                    yield "data: [DONE]\n\n"
+                    return
+
+                # 2. Mantém uma janela deslizante dos últimos 150 caracteres para avaliação DLP
                 window = self.buffer[-150:]
                 if self._check_in_flight_violation(window):
                     self.severed = True

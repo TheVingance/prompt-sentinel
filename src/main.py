@@ -32,7 +32,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         async with async_session_factory() as session:
             inserted = await seed_attack_signatures(session)
             if inserted > 0:
-                print(f"[Sentinel Init] {inserted} assinaturas de ataque indexadas no pgvector com sucesso.")
+                print(
+                    f"[Sentinel Init] {inserted} assinaturas de ataque indexadas no pgvector com sucesso."
+                )
     except Exception as exc:
         print(f"[Aviso] PostgreSQL não conectado na inicialização: {exc}")
 

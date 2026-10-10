@@ -17,6 +17,7 @@ class ThreatCategory(StrEnum):
     PII_LEAKAGE = "pii_leakage"
     RATE_LIMIT_EXCEEDED = "rate_limit_exceeded"
     HARMFUL_CONTENT = "harmful_content"
+    SYSTEM_PROMPT_EXTRACTION = "system_prompt_extraction"
 
 
 class SecurityIncidentResponse(BaseModel):

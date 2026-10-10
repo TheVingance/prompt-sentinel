@@ -23,7 +23,9 @@ router = APIRouter(prefix="/v1/audit", tags=["Security Audit & Analytics"])
     summary="Listar incidentes de segurança interceptados",
 )
 async def list_incidents(
-    category: str | None = Query(None, description="Filtrar por categoria (ex: jailbreak, prompt_injection)"),
+    category: str | None = Query(
+        None, description="Filtrar por categoria (ex: jailbreak, prompt_injection)"
+    ),
     severity: str | None = Query(None, description="Filtrar por gravidade (ex: critical, high)"),
     limit: int = Query(50, ge=1, le=100, description="Limite por página"),
     offset: int = Query(0, ge=0, description="Offset de paginação"),
@@ -116,7 +118,13 @@ async def get_audit_metrics(
     cache_stats_stmt = select(
         func.coalesce(func.sum(SemanticCacheEntry.hit_count - 1), 0),
         func.coalesce(func.sum(SemanticCacheEntry.cost_saved_usd), 0.0),
-        func.coalesce(func.sum((SemanticCacheEntry.hit_count - 1) * (SemanticCacheEntry.prompt_tokens + SemanticCacheEntry.completion_tokens)), 0),
+        func.coalesce(
+            func.sum(
+                (SemanticCacheEntry.hit_count - 1)
+                * (SemanticCacheEntry.prompt_tokens + SemanticCacheEntry.completion_tokens)
+            ),
+            0,
+        ),
         func.count(SemanticCacheEntry.id),
     )
     cache_stats_res = await db.execute(cache_stats_stmt)
