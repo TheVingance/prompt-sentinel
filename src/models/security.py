@@ -20,7 +20,7 @@ class AttackSignature(Base):
     example_text = Column(Text, nullable=False)
     # Vetores de 384 dimensões (típico de BGE-small / all-MiniLM-L6)
     embedding = Column(Vector(384), nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC))
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
 
 
 class AuditIncident(Base):
@@ -36,4 +36,4 @@ class AuditIncident(Base):
     matched_pattern = Column(String(100), nullable=True)
     similarity_score = Column(Float, nullable=True)
     sanitized_prompt_sample = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=lambda: datetime.now(UTC), index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(UTC), index=True)
