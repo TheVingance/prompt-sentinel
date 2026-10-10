@@ -41,6 +41,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const startTime = performance.now();
 
+    const isStreaming = streamToggle ? streamToggle.checked : false;
+
     try {
       const response = await fetch("/v1/chat/completions", {
         method: "POST",
@@ -50,6 +52,7 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         body: JSON.stringify({
           model: "gpt-4o-mini",
+          stream: isStreaming,
           messages: [{ role: "user", content: promptText }],
         }),
       });
@@ -63,9 +66,47 @@ document.addEventListener("DOMContentLoaded", () => {
       latencyBadge.innerText = `⏱️ Gateway: ${serverLatency}`;
       piiBadge.innerText = `🔒 PII Redacted: ${piiRedacted}`;
 
-      const data = await response.json();
+      if (response.status === 200 && isStreaming) {
+        statusTag.className = "status-tag status-200";
+        statusTag.innerText = cacheStatus === "HIT"
+          ? `🌊 200 OK • STREAMING (CACHE HIT ${cacheSavings})`
+          : "🌊 200 OK • STREAMING REAL-TIME";
+        terminalContent.innerText = "";
 
-      if (response.status === 200) {
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunkText = decoder.decode(value, { stream: true });
+          const lines = chunkText.split("\n");
+
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              const dataStr = line.slice(6).trim();
+              if (dataStr === "[DONE]") break;
+
+              try {
+                const parsed = JSON.parse(dataStr);
+                const deltaContent = parsed.choices?.[0]?.delta?.content || "";
+                accumulated += deltaContent;
+                terminalContent.innerText = accumulated;
+
+                if (parsed.choices?.[0]?.finish_reason === "security_override") {
+                  statusTag.className = "status-tag status-403";
+                  statusTag.innerText = "🚨 403 • CORTE DE SEGURANÇA EM VOO";
+                }
+              } catch (_) {
+                // Fragmentos de buffer são processados na próxima iteração
+              }
+            }
+          }
+        }
+      } else if (response.status === 200) {
+        const data = await response.json();
         statusTag.className = "status-tag status-200";
         const reply = data.choices?.[0]?.message?.content || JSON.stringify(data, null, 2);
 
@@ -76,19 +117,22 @@ document.addEventListener("DOMContentLoaded", () => {
           statusTag.innerText = "200 OK • APROVADO (CACHE POVOADO)";
           terminalContent.innerText = `[PROMPT SENTINEL RESPOSTA SEGURA]\n\n${reply}`;
         }
-      } else if (response.status === 403) {
-        statusTag.className = "status-tag status-403";
-        statusTag.innerText = "403 FORBIDDEN • BLOQUEADO";
-        const incident = data.detail || data;
-        terminalContent.innerText = `🚨 [AMEAÇA INTERCEPTADA PELO FIREWALL]\n\nCategoria: ${incident.category || "Segurança"}\nGravidade: ${incident.severity || "CRITICAL"}\nRazão: ${incident.reason || "Violação de política"}\nIncident UUID: ${incident.incident_id || "N/A"}`;
-      } else if (response.status === 429) {
-        statusTag.className = "status-tag status-429";
-        statusTag.innerText = "429 RATE LIMIT • EXCEDIDO";
-        terminalContent.innerText = `⚠️ [RATE LIMIT EXCEDIDO]\n\n${JSON.stringify(data, null, 2)}`;
       } else {
-        statusTag.className = "status-tag";
-        statusTag.innerText = `${response.status} STATUS`;
-        terminalContent.innerText = JSON.stringify(data, null, 2);
+        const data = await response.json();
+        if (response.status === 403) {
+          statusTag.className = "status-tag status-403";
+          statusTag.innerText = "403 FORBIDDEN • BLOQUEADO";
+          const incident = data.detail || data;
+          terminalContent.innerText = `🚨 [AMEAÇA INTERCEPTADA PELO FIREWALL]\n\nCategoria: ${incident.category || "Segurança"}\nGravidade: ${incident.severity || "CRITICAL"}\nRazão: ${incident.reason || "Violação de política"}\nIncident UUID: ${incident.incident_id || "N/A"}`;
+        } else if (response.status === 429) {
+          statusTag.className = "status-tag status-429";
+          statusTag.innerText = "429 RATE LIMIT • EXCEDIDO";
+          terminalContent.innerText = `⚠️ [RATE LIMIT EXCEDIDO]\n\n${JSON.stringify(data, null, 2)}`;
+        } else {
+          statusTag.className = "status-tag";
+          statusTag.innerText = `${response.status} STATUS`;
+          terminalContent.innerText = JSON.stringify(data, null, 2);
+        }
       }
 
       // Atualiza métricas após o teste
