@@ -18,6 +18,13 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
    - Todo o ciclo (implementação, testes, validação) ocorre na branch específica.
    - Apenas após os testes passarem e a funcionalidade estar validada, a branch é mesclada (*merge* ou *Pull Request*) para a `main`.
    - Isso garante que a `main` permaneça sempre estável, funcional e pronta para deploy a qualquer momento.
+3. **Descrição Completa e Estruturada em Pull Requests:**
+   - Todo link de criação de PR fornecido ao desenvolvedor **DEVE VIR ACOMPANHADO** de uma descrição detalhada em Markdown pronta para ser utilizada no GitHub, contendo:
+     - Resumo claro do que foi desenvolvido e justificativa de segurança.
+     - Mapeamento com o **OWASP Top 10 for LLMs**.
+     - Lista dos componentes e arquivos afetados.
+     - Evidência dos testes automatizados (`pytest`) e checagens de lint (`ruff`).
+     - Métricas de impacto (latência, bloqueios, consumo de memória).
 
 ---
 
