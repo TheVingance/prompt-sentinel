@@ -3,11 +3,14 @@ import uuid
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
+from src.core.database import get_db_session
 from src.pipeline.pii_masker import pii_masker
 from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
+from src.pipeline.semantic_detector import semantic_detector
 from src.schemas.proxy import ChatCompletionRequest, ChatCompletionResponse
 from src.schemas.security import (
     SecurityIncidentResponse,
@@ -43,18 +46,20 @@ async def verify_api_key(authorization: str = Header(..., description="Bearer to
     },
 )
 async def chat_completions(
-    request: ChatCompletionRequest,
+    request_data: ChatCompletionRequest,
+    raw_request: Request,
     response: Response,
     _token: str = Depends(verify_api_key),
     rate_limit: RateLimitResult = Depends(check_rate_limit),
+    db: AsyncSession = Depends(get_db_session),
 ) -> Any:
     """Endpoint proxy de alta performance compatível com OpenAI Chat Completions.
 
-    Aplica o pipeline de inspeção de segurança:
+    Aplica o pipeline completo de inspeção de segurança:
     1. Verificação de rate limiting por IP/Usuário
     2. Sanitização e heurística de injeção direta
     3. Mascaramento e detecção de dados sensíveis (PII)
-    4. Análise semântica de similaridade de jailbreak
+    4. Análise semântica de similaridade de jailbreak no pgvector
     5. Encaminhamento seguro ao LLM upstream
     """
     # 1. Injeta cabeçalhos informativos de Rate Limit na resposta
@@ -62,13 +67,20 @@ async def chat_completions(
     response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
     response.headers["X-RateLimit-Reset"] = str(rate_limit.reset_seconds)
 
+    forwarded = raw_request.headers.get("X-Forwarded-For")
+    client_ip = (
+        forwarded.split(",")[0].strip()
+        if forwarded
+        else (raw_request.client.host if raw_request.client else "127.0.0.1")
+    )
+
     # 2. Pipeline de Sanitização & PII Masking
     global_redaction_map: dict[str, str] = {}
     total_pii_redacted = 0
 
-    for message in request.messages:
+    for message in request_data.messages:
         if isinstance(message.content, str):
-            # Validação heurística rápida contra ataques explícitos de bypass
+            # Validação heurística rápida contra bypass explícito (Fast-path)
             content_lower = message.content.lower()
             if "ignore previous instructions" in content_lower or "ignore all prior instructions" in content_lower:
                 incident = SecurityIncidentResponse(
@@ -82,12 +94,24 @@ async def chat_completions(
                     detail=incident.model_dump(mode="json"),
                 )
 
-            # Aplica mascaramento de dados sensíveis
+            # Aplica mascaramento de dados sensíveis (DLP)
             mask_result = pii_masker.mask(message.content)
             if mask_result.contains_pii:
                 message.content = mask_result.sanitized_text
                 global_redaction_map.update(mask_result.redaction_map)
                 total_pii_redacted += mask_result.total_redacted
+
+            # Análise Semântica de Injeção no pgvector (Slow-path inteligente)
+            is_threat, incident_resp = await semantic_detector.analyze(
+                text=message.content,
+                session=db,
+                client_ip=client_ip,
+            )
+            if is_threat and incident_resp is not None:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=incident_resp.model_dump(mode="json"),
+                )
 
     # Injeta telemetria de PIIs interceptados
     if total_pii_redacted > 0:
@@ -95,19 +119,17 @@ async def chat_completions(
 
     # 3. Caso não haja chave upstream configurada (mock em desenvolvimento local)
     if not settings.TARGET_LLM_API_KEY:
-        mock_reply = "🛡️ [PromptSentinel Mock] Mensagem analisada e anonimizada pelo firewall de IA!"
-        # Se houve PIIs no prompt, adiciona exemplo de eco seguro para validar o unmasking
+        mock_reply = "🛡️ [PromptSentinel Mock] Mensagem analisada e aprovada pelo firewall de IA!"
         if global_redaction_map:
             first_placeholder = next(iter(global_redaction_map))
             mock_reply += f" Entidade detectada: {first_placeholder}"
 
-        # Aplica desanonimização de volta para o cliente final
         unmasked_reply = pii_masker.unmask(mock_reply, global_redaction_map)
 
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
             created=int(time.time()),
-            model=request.model,
+            model=request_data.model,
             choices=[
                 {
                     "index": 0,
@@ -135,7 +157,7 @@ async def chat_completions(
         res = await client.post(
             upstream_url,
             headers=headers,
-            json=request.model_dump(exclude_none=True),
+            json=request_data.model_dump(exclude_none=True),
         )
 
         if res.status_code != 200:
@@ -145,7 +167,6 @@ async def chat_completions(
             )
 
         payload = res.json()
-        # Desanonimiza as escolhas de retorno se houver placeholders retornados pelo modelo
         if global_redaction_map and "choices" in payload:
             for choice in payload["choices"]:
                 if "message" in choice and "content" in choice["message"]:
