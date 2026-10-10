@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.api.routes.audit import router as audit_router
 from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router
 from src.core.config import settings
@@ -69,6 +70,7 @@ async def add_process_time_header(request: Request, call_next):
 # Registro de Rotas
 app.include_router(health_router)
 app.include_router(proxy_router)
+app.include_router(audit_router)
 
 
 @app.get("/", tags=["Root"])

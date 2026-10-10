@@ -50,6 +50,7 @@ async def test_semantic_detector_identifies_jailbreak():
     """Valida que prompts com alta similaridade semântica a assinaturas são bloqueados."""
     detector = SemanticDetector(threshold=0.80)
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
 
     # Result síncrono com first() retornando tupla com a assinatura DAN Jailbreak
     mock_result = MagicMock()
