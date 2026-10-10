@@ -1,8 +1,9 @@
-from typing import Optional
+
 import redis.asyncio as aioredis
+
 from src.core.config import settings
 
-redis_client: Optional[aioredis.Redis] = None
+redis_client: aioredis.Redis | None = None
 
 
 async def init_redis_pool() -> aioredis.Redis:
@@ -25,6 +26,6 @@ async def close_redis_pool() -> None:
         redis_client = None
 
 
-def get_redis() -> Optional[aioredis.Redis]:
+def get_redis() -> aioredis.Redis | None:
     """Retorna o cliente Redis ativo."""
     return redis_client

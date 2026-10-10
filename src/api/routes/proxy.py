@@ -1,12 +1,17 @@
 import time
 import uuid
 from typing import Any
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+
 import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 
 from src.core.config import settings
 from src.schemas.proxy import ChatCompletionRequest, ChatCompletionResponse
-from src.schemas.security import SecurityIncidentResponse, ThreatCategory, ThreatSeverity
+from src.schemas.security import (
+    SecurityIncidentResponse,
+    ThreatCategory,
+    ThreatSeverity,
+)
 
 router = APIRouter(prefix="/v1", tags=["LLM Reverse Proxy"])
 
@@ -39,7 +44,7 @@ async def chat_completions(
     _token: str = Depends(verify_api_key),
 ) -> Any:
     """Endpoint proxy de alta performance compatível com OpenAI Chat Completions.
-    
+
     Aplica o pipeline de inspeção de segurança:
     1. Verificação de rate limiting por IP/Usuário
     2. Sanitização e heurística de injeção direta

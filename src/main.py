@@ -1,9 +1,9 @@
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 
 from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router

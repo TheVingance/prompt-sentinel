@@ -1,17 +1,17 @@
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Optional
+from datetime import UTC, datetime
+from enum import StrEnum
+
 from pydantic import BaseModel, Field
 
 
-class ThreatSeverity(str, Enum):
+class ThreatSeverity(StrEnum):
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
-class ThreatCategory(str, Enum):
+class ThreatCategory(StrEnum):
     PROMPT_INJECTION = "prompt_injection"
     JAILBREAK = "jailbreak"
     PII_LEAKAGE = "pii_leakage"
@@ -25,4 +25,4 @@ class SecurityIncidentResponse(BaseModel):
     category: ThreatCategory
     severity: ThreatSeverity
     reason: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))

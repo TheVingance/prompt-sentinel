@@ -1,5 +1,6 @@
 import time
 from typing import Any
+
 from fastapi import APIRouter
 from sqlalchemy import text
 
@@ -26,7 +27,7 @@ async def health_check() -> dict[str, Any]:
         status_report["services"]["postgres"] = "online"
     except Exception as exc:
         status_report["status"] = "degraded"
-        status_report["services"]["postgres"] = f"offline: {str(exc)}"
+        status_report["services"]["postgres"] = f"offline: {exc!s}"
 
     # Verifica conexão com Redis
     try:
@@ -38,7 +39,7 @@ async def health_check() -> dict[str, Any]:
             status_report["services"]["redis"] = "offline"
     except Exception as exc:
         status_report["status"] = "degraded"
-        status_report["services"]["redis"] = f"offline: {str(exc)}"
+        status_report["services"]["redis"] = f"offline: {exc!s}"
 
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     status_report["latency_ms"] = round(elapsed_ms, 2)
