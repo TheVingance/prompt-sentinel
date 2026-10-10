@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PromptSentinel • AI Security Firewall & LLM Gateway</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/dashboard.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">🛡️</div>
+        <div>
+          <h1>PromptSentinel <span class="brand-badge">AI FIREWALL</span></h1>
+          <p style="color: var(--text-secondary); font-size: 0.85rem;">Gateway Reverso de Segurança e Inspeção em Tempo Real para LLMs</p>
+        </div>
+      </div>
+      <div class="status-indicator">
+        <div class="pulse-dot"></div>
+        <span>PROTEÇÃO ATIVA NA BORDA</span>
+      </div>
+    </header>
+
+    <!-- KPI Metric Cards -->
+    <section class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-title">Ameaças Bloqueadas</div>
+        <div class="kpi-value" id="kpiTotalBlocked" style="color: var(--accent-red);">0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Incidentes nas últimas 24h</div>
+        <div class="kpi-value" id="kpi24h" style="color: var(--accent-yellow);">0</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Média de Similaridade (pgvector)</div>
+        <div class="kpi-value" id="kpiAvgSimilarity" style="color: var(--accent-cyan);">N/A</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Status da Inspeção</div>
+        <div class="kpi-value" style="color: var(--accent-green); font-size: 1.4rem;">ONLINE &bull; &lt;15ms</div>
+      </div>
+    </section>
+
+    <!-- Main Workspace -->
+    <main class="dashboard-layout">
+      <!-- Left Column: Interactive Attack Playground -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">🧪 Playground de Injeção & Defesa em Tempo Real</h2>
+          <span style="font-size: 0.8rem; color: var(--text-muted);">Compatível com OpenAI API</span>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
+          Selecione um cenário de teste rápido ou digite um prompt customizado para ver o firewall em ação:
+        </p>
+
+        <!-- Fast Attack Templates -->
+        <div class="template-bar">
+          <button class="btn-template" data-type="safe">✅ Prompt Benigno</button>
+          <button class="btn-template" data-type="pii">🔒 Vazamento de PII (CPF + Cartão)</button>
+          <button class="btn-template" data-type="dan">🚨 Ataque DAN Jailbreak</button>
+          <button class="btn-template" data-type="extraction">⚠️ Extração de System Prompt</button>
+        </div>
+
+        <!-- Prompt Textarea -->
+        <textarea id="promptInput" class="prompt-input" placeholder="Digite seu prompt aqui para testar o firewall..."></textarea>
+
+        <button id="btnSubmit" class="btn-submit">Inspecionar & Enviar via Gateway</button>
+
+        <!-- Terminal Output -->
+        <div id="terminal" class="terminal" style="display: none;">
+          <div class="terminal-header">
+            <span id="statusTag" class="status-tag status-200">PROCESSANDO</span>
+            <div class="metrics-row">
+              <span id="latencyBadge">⏱️ Gateway: --</span>
+              <span id="piiBadge">🔒 PII Redacted: 0</span>
+            </div>
+          </div>
+          <div id="terminalContent" class="terminal-body"></div>
+        </div>
+      </section>
+
+      <!-- Right Column: Live Telemetry & Incident Logs -->
+      <section class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">📝 Trilha de Auditoria & Compliance</h2>
+          <span style="font-size: 0.8rem; color: var(--accent-cyan);">PostgreSQL pgvector</span>
+        </div>
+
+        <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;">
+          Ataques bloqueados são registrados com hash seguro e amostra higienizada para conformidade:
+        </p>
+
+        <div style="overflow-x: auto;">
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Categoria</th>
+                <th>Padrão / Gravidade</th>
+                <th>Similaridade</th>
+                <th>Horário</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody">
+              <tr>
+                <td colspan="4" style="text-align: center; color: var(--text-muted);">Carregando trilha de auditoria...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="margin-top: 24px; padding: 14px; background: rgba(0, 210, 255, 0.04); border: 1px solid rgba(0, 210, 255, 0.15); border-radius: 10px; font-size: 0.8rem; color: var(--text-secondary);">
+          💡 <strong>Como testar via código:</strong> Basta apontar seu cliente OpenAI para este gateway alterando a <code>base_url="http://localhost:8000/v1"</code>. Toda a sanitização, DLP e bloqueios ocorrerão de forma transparente.
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/dashboard.js"></script>
+</body>
+</html>
