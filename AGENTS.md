@@ -4,7 +4,24 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 🎯 1. Princípios Fundamentais
+## 🌿 1. Fluxo de Trabalho Git & Estratégia de Branches (Mandatório)
+
+> **Regra Fundamental de Proteção:** É estritamente proibido desenvolver ou commitar código diretamente na branch `main`!
+
+1. **Criação de Branch por Funcionalidade:**
+   - A cada nova funcionalidade, correção de bug ou refatoração, **DEVE-SE** criar uma branch isolada a partir da `main`:
+     - `feature/<nome-da-feature>`: para novas capacidades (ex: `feature/docker-compose-setup`, `feature/pii-masking`).
+     - `fix/<nome-do-bug>`: para correção de problemas (ex: `fix/fastembed-leak`).
+     - `perf/<otimizacao>`: para melhorias de latência ou throughput.
+     - `test/<suite>`: para expansão de testes e benchmarks.
+2. **Ciclo de Desenvolvimento Seguro:**
+   - Todo o ciclo (implementação, testes, validação) ocorre na branch específica.
+   - Apenas após os testes passarem e a funcionalidade estar validada, a branch é mesclada (*merge* ou *Pull Request*) para a `main`.
+   - Isso garante que a `main` permaneça sempre estável, funcional e pronta para deploy a qualquer momento.
+
+---
+
+## 🎯 2. Princípios Fundamentais de Engenharia
 
 1. **Segurança em Primeiro Lugar:**
    - Nunca injete segredos, tokens ou senhas em código fonte ou arquivos rastreados pelo git.
@@ -24,7 +41,7 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 🧪 2. Qualidade de Código & Testes
+## 🧪 3. Qualidade de Código & Testes
 
 - **TDD / Testes Obrigatórios:** Nenhuma regra de segurança, filtro de PII ou rota de API deve ser considerada concluída sem testes automatizados em `tests/`.
 - **Framework de Teste:** `pytest` com `pytest-asyncio`.
@@ -32,28 +49,28 @@ Este documento define os padrões de engenharia, conduta e fluxo de trabalho par
 
 ---
 
-## 📦 3. Git & Commits Semânticos
+## 📦 4. Commits Semânticos
 
 Siga rigorosamente o padrão **Conventional Commits**:
-- `feat(gateway)`: Nova funcionalidade (ex: adiciona rate limit por IP).
-- `fix(sanitizer)`: Correção de bug ou bypass em filtro.
-- `perf(embeddings)`: Melhoria mensurável de desempenho.
-- `test(injection)`: Inclusão ou ajuste de testes.
-- `docs(readme)`: Atualização de documentação ou diagramas.
-- `refactor(core)`: Refatoração que não altera comportamento público.
+- `feat(...)`: Nova funcionalidade.
+- `fix(...)`: Correção de bug ou falha.
+- `perf(...)`: Melhoria mensurável de desempenho.
+- `test(...)`: Inclusão ou ajuste de testes.
+- `docs(...)`: Atualização de documentação ou diagramas.
+- `refactor(...)`: Refatoração interna sem alteração de comportamento público.
 
-> **Regra de ouro:** Mensagens de commit devem ser escritas no imperativo em inglês ou português coerente, explicando o *porquê* e o *o quê*.
+> **Regra de ouro:** Mensagens de commit devem ser escritas no imperativo, explicando o *porquê* e o *o quê*.
 
 ---
 
-## 🐳 4. Reprodutibilidade & Docker
+## 🐳 5. Reprodutibilidade & Docker
 
 - Qualquer adição de dependência de sistema ou serviço (ex: novo banco, novo cache) **deve** ser refletida imediatamente no `docker-compose.yml` e no `Dockerfile`.
 - O comando `docker compose up --build` deve funcionar na primeira tentativa em qualquer máquina limpa.
 
 ---
 
-## 💬 5. Modos de Colaboração da IA com o Desenvolvedor
+## 💬 6. Modos de Colaboração da IA com o Desenvolvedor
 
 1. **Transparência nas decisões técnicas:** Ao sugerir uma biblioteca ou arquitetura, justifique o motivo (ex: por que FastEmbed em vez de SentenceTransformers completo).
 2. **Alterações cirúrgicas:** Não reescreva módulos inteiros sem necessidade; preserve comentários explicativos e lógica estável existente.
