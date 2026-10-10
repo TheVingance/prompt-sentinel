@@ -76,8 +76,14 @@
           <button class="btn-template" data-type="extraction">⚠️ Extração de System Prompt</button>
         </div>
 
-        <!-- Prompt Textarea -->
-        <textarea id="promptInput" class="prompt-input" placeholder="Digite seu prompt aqui para testar o firewall..."></textarea>
+        <!-- Streaming Control -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin: 12px 0;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--accent-cyan); cursor: pointer;">
+            <input type="checkbox" id="streamToggle" style="accent-color: var(--accent-cyan); cursor: pointer;">
+            <span>🌊 Ativar Streaming Real-time (SSE token a token)</span>
+          </label>
+          <span style="font-size: 0.75rem; color: var(--accent-green); background: rgba(0, 230, 118, 0.08); padding: 2px 8px; border-radius: 12px; border: 1px solid rgba(0, 230, 118, 0.2);">🛡️ In-Flight Safety Severing Ativo</span>
+        </div>
 
         <button id="btnSubmit" class="btn-submit">Inspecionar & Enviar via Gateway</button>
 

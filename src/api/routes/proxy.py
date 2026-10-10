@@ -1,9 +1,11 @@
+import json
 import time
 import uuid
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
@@ -12,6 +14,11 @@ from src.pipeline.pii_masker import pii_masker
 from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
 from src.pipeline.semantic_cache import semantic_cache
 from src.pipeline.semantic_detector import semantic_detector
+from src.pipeline.stream_handler import (
+    StreamInspector,
+    create_cached_stream_generator,
+    mock_token_generator,
+)
 from src.schemas.proxy import ChatCompletionRequest, ChatCompletionResponse
 from src.schemas.security import (
     SecurityIncidentResponse,
@@ -138,6 +145,19 @@ async def chat_completions(
 
             cached_reply = pii_masker.unmask(cache_hit.response_text, global_redaction_map)
 
+            if request_data.stream:
+                return StreamingResponse(
+                    create_cached_stream_generator(cached_reply, request_data.model),
+                    media_type="text/event-stream",
+                    headers={
+                        "Cache-Control": "no-cache",
+                        "Connection": "keep-alive",
+                        "X-Cache-Status": "HIT",
+                        "X-Cache-Savings-USD": f"${cache_hit.saved_cost_usd:.6f}",
+                        "X-Cache-Similarity": f"{cache_hit.similarity_score:.4f}",
+                    },
+                )
+
             return ChatCompletionResponse(
                 id=f"chatcmpl-cache-{uuid.uuid4().hex[:10]}",
                 created=int(time.time()),
@@ -181,6 +201,22 @@ async def chat_completions(
 
         unmasked_reply = pii_masker.unmask(mock_reply, global_redaction_map)
 
+        if request_data.stream:
+            inspector = StreamInspector(
+                model_name=request_data.model,
+                session=db,
+                client_ip=client_ip,
+            )
+            return StreamingResponse(
+                inspector.inspect_and_stream(mock_token_generator(unmasked_reply)),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Cache-Status": "MISS",
+                },
+            )
+
         return ChatCompletionResponse(
             id=f"chatcmpl-{uuid.uuid4().hex[:12]}",
             created=int(time.time()),
@@ -203,6 +239,53 @@ async def chat_completions(
         )
 
     # 5. Repasse upstream assíncrono caso chave esteja configurada
+    if request_data.stream:
+        async def upstream_token_stream():
+            async with httpx.AsyncClient(timeout=60.0) as client:
+                upstream_url = f"{settings.TARGET_LLM_BASE_URL.rstrip('/')}/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {settings.TARGET_LLM_API_KEY}",
+                    "Content-Type": "application/json",
+                }
+                async with client.stream(
+                    "POST",
+                    upstream_url,
+                    headers=headers,
+                    json=request_data.model_dump(exclude_none=True),
+                ) as upstream_res:
+                    if upstream_res.status_code != 200:
+                        err_text = await upstream_res.aread()
+                        yield f"Error: {err_text.decode()}"
+                        return
+
+                    async for line in upstream_res.aiter_lines():
+                        if line.startswith("data: "):
+                            data_str = line[6:].strip()
+                            if data_str == "[DONE]":
+                                break
+                            try:
+                                chunk_json = json.loads(data_str)
+                                delta_content = chunk_json.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                                if delta_content:
+                                    yield delta_content
+                            except Exception:
+                                continue
+
+        inspector = StreamInspector(
+            model_name=request_data.model,
+            session=db,
+            client_ip=client_ip,
+        )
+        return StreamingResponse(
+            inspector.inspect_and_stream(upstream_token_stream()),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Cache-Status": "MISS",
+            },
+        )
+
     async with httpx.AsyncClient(timeout=60.0) as client:
         upstream_url = f"{settings.TARGET_LLM_BASE_URL.rstrip('/')}/chat/completions"
         headers = {
