@@ -41,8 +41,16 @@
         <div class="kpi-value" id="kpiAvgSimilarity" style="color: var(--accent-cyan);">N/A</div>
       </div>
       <div class="kpi-card">
+        <div class="kpi-title">Economia Estimada (FinOps)</div>
+        <div class="kpi-value" id="kpiSavedUSD" style="color: var(--accent-green);">$0.0000</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-title">Cache Hit Rate</div>
+        <div class="kpi-value" id="kpiCacheHitRatio" style="color: var(--accent-cyan);">0.0%</div>
+      </div>
+      <div class="kpi-card">
         <div class="kpi-title">Status da Inspeção</div>
-        <div class="kpi-value" style="color: var(--accent-green); font-size: 1.4rem;">ONLINE &bull; &lt;15ms</div>
+        <div class="kpi-value" style="color: var(--accent-green); font-size: 1.4rem;">ONLINE &bull; &lt;5ms</div>
       </div>
     </section>
 
@@ -56,12 +64,13 @@
         </div>
 
         <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;">
-          Selecione um cenário de teste rápido ou digite um prompt customizado para ver o firewall em ação:
+          Selecione um cenário de teste rápido ou digite um prompt customizado para ver o firewall e o cache em ação:
         </p>
 
         <!-- Fast Attack Templates -->
         <div class="template-bar">
           <button class="btn-template" data-type="safe">✅ Prompt Benigno</button>
+          <button class="btn-template" data-type="cache">⚡ Testar Cache Hit (FinOps)</button>
           <button class="btn-template" data-type="pii">🔒 Vazamento de PII (CPF + Cartão)</button>
           <button class="btn-template" data-type="dan">🚨 Ataque DAN Jailbreak</button>
           <button class="btn-template" data-type="extraction">⚠️ Extração de System Prompt</button>

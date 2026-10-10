@@ -38,6 +38,11 @@ class Settings(BaseSettings):
     SIMILARITY_THRESHOLD: float = 0.82
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
 
+    # Cache Semântico & FinOps Engine
+    SEMANTIC_CACHE_ENABLED: bool = True
+    CACHE_SIMILARITY_THRESHOLD: float = 0.95
+    CACHE_TTL_SECONDS: int = 3600
+
     @computed_field
     @property
     def database_url(self) -> str:
