@@ -14,6 +14,8 @@ from src.core.database import get_db_session
 from src.core.metrics import (
     sentinel_cache_hits_total,
     sentinel_cache_savings_usd_total,
+    sentinel_circuit_breaker_state,
+    sentinel_fallbacks_total,
     sentinel_pii_redacted_total,
     sentinel_requests_total,
     sentinel_threats_blocked_total,
@@ -21,6 +23,7 @@ from src.core.metrics import (
 )
 from src.models.security import AuditIncident
 from src.pipeline.canary import canary_manager
+from src.pipeline.fallback_router import resilient_router
 from src.pipeline.output_guardrail import output_guardrail
 from src.pipeline.pii_masker import pii_masker
 from src.pipeline.rate_limiter import RateLimitResult, check_rate_limit
@@ -232,13 +235,55 @@ async def chat_completions(
 
     response.headers["X-Cache-Status"] = "MISS"
 
+    # Avaliação de Resiliência: Circuit Breaker e Roteamento de Contingência
+    primary_cb = resilient_router.get_circuit_for_model(request_data.model)
+    sentinel_circuit_breaker_state.labels(provider=request_data.model).set(
+        primary_cb.get_numeric_state()
+    )
+
+    fallback_triggered = False
+    model_routed = request_data.model
+
+    # Verifica se a simulação de falha foi disparada via prompt ou se o circuito está aberto
+    simulate_outage = (
+        "simulate provider outage" in user_prompt.lower()
+        or "simulate_fallback" in user_prompt.lower()
+        or "circuit breaker test" in user_prompt.lower()
+    )
+
+    if simulate_outage or not primary_cb.allow_request():
+        fallback_chain = resilient_router.get_fallback_chain(request_data.model)
+        fallback_model = fallback_chain[1] if len(fallback_chain) > 1 else "mock-resilient"
+        fallback_triggered = True
+        model_routed = fallback_model
+        primary_cb.record_failure()
+        sentinel_fallbacks_total.labels(from_model=request_data.model, to_model=model_routed).inc()
+        sentinel_circuit_breaker_state.labels(provider=request_data.model).set(
+            primary_cb.get_numeric_state()
+        )
+    else:
+        primary_cb.record_success()
+        sentinel_circuit_breaker_state.labels(provider=request_data.model).set(
+            primary_cb.get_numeric_state()
+        )
+
+    # Injeta headers de resiliência e alta disponibilidade
+    response.headers["X-Sentinel-Provider-Routed"] = model_routed
+    response.headers["X-Sentinel-Fallback-Triggered"] = "true" if fallback_triggered else "false"
+    response.headers["X-Sentinel-Circuit-State"] = primary_cb.state.value.upper()
+
     # Injeta Canary Token defensivo no histórico de mensagens (Honeypotting)
     enriched_messages, canary_token = canary_manager.inject_canary(request_data.messages)
 
     # 4. Caso não haja chave upstream configurada (mock em desenvolvimento local)
     if not settings.TARGET_LLM_API_KEY:
         mock_reply = "🛡️ [PromptSentinel Mock] Mensagem analisada e aprovada pelo firewall de IA!"
-        if global_redaction_map:
+        if fallback_triggered:
+            mock_reply = (
+                f"🛡️ [PromptSentinel Fallback Ativo] Provedor primário '{request_data.model}' indisponível "
+                f"(Circuito: {primary_cb.state.value.upper()}). Requisição atendida com contingência via '{model_routed}'!"
+            )
+        elif global_redaction_map:
             first_placeholder = next(iter(global_redaction_map))
             mock_reply += f" Entidade detectada: {first_placeholder}"
 
@@ -250,7 +295,7 @@ async def chat_completions(
 
         if request_data.stream:
             inspector = StreamInspector(
-                model_name=request_data.model,
+                model_name=model_routed,
                 session=db,
                 client_ip=client_ip,
                 canary_token=canary_token,
@@ -262,6 +307,9 @@ async def chat_completions(
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Cache-Status": "MISS",
+                    "X-Sentinel-Provider-Routed": model_routed,
+                    "X-Sentinel-Fallback-Triggered": "true" if fallback_triggered else "false",
+                    "X-Sentinel-Circuit-State": primary_cb.state.value.upper(),
                 },
             )
 

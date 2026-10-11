@@ -28,12 +28,13 @@
 
 Aplicações corporativas integradas a modelos fundacionais (LLMs) enfrentam vetores de ataque inéditos e críticos. O **PromptSentinel** atua como uma barreira defensiva de borda (*Reverse Proxy* assíncrono de alta performance), interceptando e inspecionando prompts antes que atinjam o modelo e validando respostas antes de retorná-las ao usuário.
 
-### 🛑 Mitigações do OWASP Top 10 for LLMs
+### 🛑 Mitigações do OWASP Top 10 for LLMs & Alta Disponibilidade
 - **LLM01: Prompt Injection & Jailbreaks** — Detecção semântica por similaridade de cosseno via **`pgvector`** contra assinaturas de jailbreak conhecidas (DAN, Developer Mode, AIM, etc.).
 - **LLM02: Sensitive Information Disclosure (PII / DLP)** — Detecção e mascaramento bidirecional transparente de CPFs, e-mails, telefones, chaves de API e **cartões de crédito validados com o algoritmo de Luhn (Módulo 10)**.
 - **LLM04: Model Denial of Service** — Rate limiting distribuído em **Redis** através do algoritmo de **Janela Deslizante (*Sliding Window*)**, mitigando ataques de exaustão de cota de tokens.
 - **LLM06: Insecure Output Handling** — Outbound Guardrails inspecionando respostas geradas antes da entrega ao cliente final, bloqueando comandos destrutivos (`rm -rf /`, bash reverse shells via `/dev/tcp`) e dados confidenciais.
 - **LLM07: System Prompt Leakage** — **Canary Token Honeypotting** com injeção dinâmica de segredos unívocos rastreáveis. Caso um jailbreak force a exfiltração do system prompt, o vazamento é interceptado com **0% de falsos positivos**, cortando streams em voo (*In-Flight Safety Severing*).
+- **⚡ Alta Disponibilidade & Resiliência** — **Circuit Breaker Multi-Model** (padrão Martin Fowler: `CLOSED`, `OPEN`, `HALF_OPEN`) com failover automático e transparente entre modelos em caso de indisponibilidade ou instabilidade de provedor upstream.
 
 ---
 
@@ -47,9 +48,9 @@ http://localhost:8000/dashboard
 
 ### Funcionalidades da Interface:
 1. **🧪 Playground de Ataques em Tempo Real:**
-   - Botões de teste rápido com 1 clique: *"Prompt Benigno"*, *"Testar Cache Hit (FinOps)"*, *"Vazamento de PII (CPF + Cartão)"*, *"Ataque DAN Jailbreak"*, *"Roubo de System Prompt (Canary Token)"*, *"Extração de System Prompt"*.
+   - Botões de teste rápido com 1 clique: *"Prompt Benigno"*, *"Testar Cache Hit (FinOps)"*, *"Simular Queda / Fallback (Circuit Breaker)"*, *"Vazamento de PII (CPF + Cartão)"*, *"Ataque DAN Jailbreak"*, *"Roubo de System Prompt (Canary Token)"*, *"Extração de System Prompt"*.
    - Toggle para **Streaming SSE Real-time** com demonstração de **In-Flight Safety Severing** ao vivo.
-   - Resposta visual com indicador de status (`200 OK Seguro`, `403 Bloqueado` ou `429 Rate Limit`), latência em milissegundos, economia FinOps e entidades PII mascaradas.
+   - Resposta visual com indicador de status (`200 OK Seguro`, `403 Bloqueado` ou `429 Rate Limit`), latência em milissegundos, economia FinOps, provedor roteado e entidades PII mascaradas.
 2. **📊 Telemetria ao Vivo & KPIs:**
    - Contadores consolidados de ameaças bloqueadas, incidentes nas últimas 24h, métricas FinOps e economia em USD acumulada.
    - Trilha de auditoria ao vivo alimentada diretamente pela tabela `audit_incidents` no PostgreSQL.
@@ -108,6 +109,26 @@ A plataforma conta com stack completa de monitoramento e telemetria corporativa 
 3. **Economia FinOps Acumulada (\$ USD):** Valor financeiro poupado em tempo real pelo Cache Semântico.
 4. **Latência de Borda (P50, P90, P99):** Histogramas detalhando o tempo de resposta do gateway em milissegundos.
 5. **DLP & Proteção de Dados:** Gráfico de pizza com a distribuição de entidades PII identificadas e anonimizadas.
+
+---
+
+## ⚡ Alta Disponibilidade & Circuit Breaker Multi-Model
+
+Para evitar falhas catastróficas quando provedores upstream de IA (como OpenAI ou Anthropic) enfrentarem indisponibilidade (5xx), sobrecarga (429) ou latências degradadas, o PromptSentinel implementa o padrão **Circuit Breaker** (Martin Fowler) acoplado a **Cadeias de Fallback Automáticas**:
+
+### Estados Operacionais do Circuito
+1. **`CLOSED` (Normal):** Todas as requisições fluem para o modelo primário configurado. Falhas esporádicas são toleradas até o limiar configurado (`failure_threshold = 3`).
+2. **`OPEN` (Interrupção & Fast-Fail):** Atingido o limiar de falhas consecutivas, o circuito abre imediatamente. Novas chamadas ao provedor primário sofrem *fast-fail* sem aguardar timeouts de rede caros, sendo automaticamente redirecionadas para o próximo modelo saudável na cadeia de contingência (`FALLBACK_MAP`).
+3. **`HALF_OPEN` (Recuperação Canário):** Após o período de resfriamento (`cooldown_seconds = 30s`), o circuito permite requisições-sonda (canários). Se `recovery_threshold = 2` requisições consecutivas obtiverem sucesso, o circuito fecha (`CLOSED`), restaurando a operação plena. Se falhar, retorna imediatamente para `OPEN`.
+
+### Cabeçalhos de Resiliência HTTP Retornados
+- `X-Sentinel-Provider-Routed`: Informa qual modelo efetivamente atendeu a inferência (`gpt-4o-mini`, `claude-3-5-sonnet`, etc.).
+- `X-Sentinel-Fallback-Triggered`: `true` quando a comutação de emergência foi acionada, `false` em rota nominal.
+- `X-Sentinel-Circuit-State`: Estado do circuito do modelo primário (`CLOSED`, `HALF_OPEN`, `OPEN`).
+
+### Métricas Prometheus de Confiabilidade
+- `sentinel_fallbacks_total{from_model, to_model}`: Contador de acionamentos de contingência entre modelos.
+- `sentinel_circuit_breaker_state{provider}`: Gauge exportando o estado de saúde de cada provedor (0=CLOSED, 1=HALF_OPEN, 2=OPEN).
 
 ---
 
@@ -171,7 +192,7 @@ Resultados empíricos obtidos através da suite assíncrona de teste de carga (`
 ## 🧪 Qualidade de Código & Testes Automatizados
 
 O projeto conta com esteira de CI/CD via **GitHub Actions** executando em cada commit e Pull Request:
-- **27 testes automatizados com `Pytest`** cobrindo todas as rotas, detecção vetorial, anonimização e rate limiting.
+- **56 testes automatizados com `Pytest`** cobrindo todas as rotas, detecção vetorial, anonimização, rate limiting, canary tokens, streaming SSE e circuit breaking resiliente.
 - **Linter estrito com `Ruff`** garantindo conformidade com padrões PEP 8 e tipagem moderna do Python 3.12+.
 
 Para rodar os testes localmente:
