@@ -69,6 +69,20 @@ sentinel_circuit_breaker_state = Gauge(
     ["provider"],
 )
 
+# 7. Métricas de Multi-Tenancy & Governança Organizacional
+sentinel_tenant_requests_total = Counter(
+    "sentinel_tenant_requests_total",
+    "Total de requisições segregadas por organização/tenant",
+    ["tenant", "status"],
+)
+
+# 8. Contador de exportação para SIEM
+sentinel_siem_events_exported_total = Counter(
+    "sentinel_siem_events_exported_total",
+    "Total de eventos de segurança exportados para ferramentas de SIEM",
+    ["format"],
+)
+
 
 def get_prometheus_metrics() -> bytes:
     """Gera o payload serializado em formato Prometheus padrão."""

@@ -11,6 +11,8 @@ from src.api.routes.audit import router as audit_router
 from src.api.routes.dashboard import router as dashboard_router
 from src.api.routes.health import router as health_router
 from src.api.routes.proxy import router as proxy_router
+from src.api.routes.siem import router as siem_router
+from src.api.routes.tenants import router as tenants_router
 from src.core.config import settings
 from src.core.database import async_session_factory, close_db, init_db
 from src.core.metrics import (
@@ -92,6 +94,8 @@ app.include_router(dashboard_router)
 app.include_router(health_router)
 app.include_router(proxy_router)
 app.include_router(audit_router)
+app.include_router(tenants_router)
+app.include_router(siem_router)
 
 
 @app.get("/metrics", tags=["Observabilidade"])
@@ -112,4 +116,6 @@ async def root() -> dict[str, str]:
         "docs": "/docs",
         "health": "/health",
         "metrics": "/metrics",
+        "tenants": "/v1/tenants",
+        "siem": "/v1/siem/events",
     }

@@ -27,6 +27,7 @@ class SemanticDetector:
         text: str,
         session: AsyncSession,
         client_ip: str = "127.0.0.1",
+        tenant_id: uuid.UUID | None = None,
     ) -> tuple[bool, SecurityIncidentResponse | None]:
         """Compara o embedding do texto com a base de assinaturas de ataque no pgvector."""
         if not text or not text.strip():
@@ -66,6 +67,7 @@ class SemanticDetector:
                     # Persiste o incidente na trilha de auditoria para conformidade
                     audit_record = AuditIncident(
                         id=uuid.UUID(incident_id),
+                        tenant_id=tenant_id,
                         client_ip=client_ip,
                         threat_category=category_str,
                         threat_severity=severity_str,

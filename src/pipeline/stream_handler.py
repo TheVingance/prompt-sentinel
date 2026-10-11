@@ -27,11 +27,13 @@ class StreamInspector:
         session: AsyncSession | None = None,
         client_ip: str = "127.0.0.1",
         canary_token: str | None = None,
+        tenant_id: uuid.UUID | None = None,
     ):
         self.model_name = model_name
         self.session = session
         self.client_ip = client_ip
         self.canary_token = canary_token
+        self.tenant_id = tenant_id
         self.stream_id = f"chatcmpl-stream-{uuid.uuid4().hex[:12]}"
         self.buffer = ""
         self.severed = False
@@ -76,6 +78,7 @@ class StreamInspector:
             try:
                 incident = AuditIncident(
                     id=uuid.UUID(incident_id),
+                    tenant_id=self.tenant_id,
                     client_ip=self.client_ip,
                     threat_category=category,
                     threat_severity="critical",
