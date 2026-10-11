@@ -3,6 +3,7 @@
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Counter,
+    Gauge,
     Histogram,
     generate_latest,
 )
@@ -55,6 +56,19 @@ sentinel_request_duration_seconds = Histogram(
     buckets=(0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0),
 )
 
+# 6. Métricas de Resiliência e Tolerância a Falhas (Circuit Breaker & Fallback)
+sentinel_fallbacks_total = Counter(
+    "sentinel_fallbacks_total",
+    "Total de comutações automáticas para modelos de contingência (Fallback)",
+    ["from_model", "to_model"],
+)
+
+sentinel_circuit_breaker_state = Gauge(
+    "sentinel_circuit_breaker_state",
+    "Estado do Circuit Breaker por provedor (0=CLOSED, 1=HALF_OPEN, 2=OPEN)",
+    ["provider"],
+)
+
 
 def get_prometheus_metrics() -> bytes:
     """Gera o payload serializado em formato Prometheus padrão."""
@@ -66,6 +80,8 @@ __all__ = [
     "get_prometheus_metrics",
     "sentinel_cache_hits_total",
     "sentinel_cache_savings_usd_total",
+    "sentinel_circuit_breaker_state",
+    "sentinel_fallbacks_total",
     "sentinel_pii_redacted_total",
     "sentinel_request_duration_seconds",
     "sentinel_requests_total",

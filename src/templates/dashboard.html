@@ -71,6 +71,7 @@
         <div class="template-bar">
           <button class="btn-template" data-type="safe">✅ Prompt Benigno</button>
           <button class="btn-template" data-type="cache">⚡ Testar Cache Hit (FinOps)</button>
+          <button class="btn-template" data-type="fallback">🔀 Simular Queda / Fallback (Circuit Breaker)</button>
           <button class="btn-template" data-type="pii">🔒 Vazamento de PII (CPF + Cartão)</button>
           <button class="btn-template" data-type="dan">🚨 Ataque DAN Jailbreak</button>
           <button class="btn-template" data-type="canary">🐤 Roubo de System Prompt (Canary Token)</button>
@@ -95,6 +96,7 @@
             <div class="metrics-row">
               <span id="latencyBadge">⏱️ Gateway: --</span>
               <span id="piiBadge">🔒 PII Redacted: 0</span>
+              <span id="routedBadge" style="display: none;">🔀 Routed: --</span>
             </div>
           </div>
           <div id="terminalContent" class="terminal-body"></div>
