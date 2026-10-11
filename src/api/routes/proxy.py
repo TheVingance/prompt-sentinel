@@ -18,10 +18,13 @@ from src.core.metrics import (
     sentinel_fallbacks_total,
     sentinel_pii_redacted_total,
     sentinel_requests_total,
+    sentinel_tenant_requests_total,
     sentinel_threats_blocked_total,
     sentinel_tokens_saved_total,
 )
+from src.core.tenant import get_current_tenant
 from src.models.security import AuditIncident
+from src.models.tenant import Tenant
 from src.pipeline.canary import canary_manager
 from src.pipeline.fallback_router import resilient_router
 from src.pipeline.output_guardrail import output_guardrail
@@ -76,7 +79,7 @@ async def chat_completions(
     request_data: ChatCompletionRequest,
     raw_request: Request,
     response: Response,
-    _token: str = Depends(verify_api_key),
+    tenant: Tenant = Depends(get_current_tenant),
     rate_limit: RateLimitResult = Depends(check_rate_limit),
     db: AsyncSession = Depends(get_db_session),
 ) -> Any:
@@ -89,10 +92,16 @@ async def chat_completions(
     4. Análise semântica de similaridade de jailbreak no pgvector
     5. Encaminhamento seguro ao LLM upstream
     """
-    # 1. Injeta cabeçalhos informativos de Rate Limit na resposta
+    # 1. Injeta cabeçalhos informativos de Rate Limit e Tenant na resposta
     response.headers["X-RateLimit-Limit"] = str(rate_limit.limit)
     response.headers["X-RateLimit-Remaining"] = str(rate_limit.remaining)
     response.headers["X-RateLimit-Reset"] = str(rate_limit.reset_seconds)
+    response.headers["X-Sentinel-Tenant"] = tenant.slug
+    response.headers["X-Sentinel-Budget-Remaining"] = (
+        f"${max(0.0, tenant.monthly_budget_usd - tenant.current_spend_usd):.2f}"
+    )
+
+    current_tenant_id = tenant.id if tenant.slug != "default" else None
 
     forwarded = raw_request.headers.get("X-Forwarded-For")
     client_ip = (
@@ -143,15 +152,27 @@ async def chat_completions(
                     sentinel_pii_redacted_total.labels(entity_type=entity_type).inc()
 
             # Análise Semântica de Injeção no pgvector (Slow-path inteligente)
-            is_threat, incident_resp = await semantic_detector.analyze(
-                text=message.content,
-                session=db,
-                client_ip=client_ip,
-            )
+            if current_tenant_id:
+                is_threat, incident_resp = await semantic_detector.analyze(
+                    text=message.content,
+                    session=db,
+                    client_ip=client_ip,
+                    tenant_id=current_tenant_id,
+                )
+            else:
+                is_threat, incident_resp = await semantic_detector.analyze(
+                    text=message.content,
+                    session=db,
+                    client_ip=client_ip,
+                )
             if is_threat and incident_resp is not None:
                 sentinel_threats_blocked_total.labels(
                     category=incident_resp.category.value,
                     severity=incident_resp.severity.value,
+                ).inc()
+                sentinel_tenant_requests_total.labels(
+                    tenant=tenant.slug,
+                    status="403",
                 ).inc()
                 sentinel_requests_total.labels(
                     model=request_data.model,
@@ -299,6 +320,7 @@ async def chat_completions(
                 session=db,
                 client_ip=client_ip,
                 canary_token=canary_token,
+                tenant_id=current_tenant_id,
             )
             return StreamingResponse(
                 inspector.inspect_and_stream(mock_token_generator(mock_reply)),
@@ -307,6 +329,8 @@ async def chat_completions(
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Cache-Status": "MISS",
+                    "X-Sentinel-Tenant": tenant.slug,
+                    "X-Sentinel-Budget-Remaining": f"${max(0.0, tenant.monthly_budget_usd - tenant.current_spend_usd):.2f}",
                     "X-Sentinel-Provider-Routed": model_routed,
                     "X-Sentinel-Fallback-Triggered": "true" if fallback_triggered else "false",
                     "X-Sentinel-Circuit-State": primary_cb.state.value.upper(),
@@ -322,6 +346,10 @@ async def chat_completions(
                 else "system_prompt_extraction",
                 severity="critical",
             ).inc()
+            sentinel_tenant_requests_total.labels(
+                tenant=tenant.slug,
+                status="403",
+            ).inc()
             sentinel_requests_total.labels(
                 model=request_data.model,
                 status="403",
@@ -329,6 +357,7 @@ async def chat_completions(
             incident_id = str(uuid.uuid4())
             audit_record = AuditIncident(
                 id=uuid.UUID(incident_id),
+                tenant_id=current_tenant_id,
                 client_ip=client_ip,
                 threat_category=guard_res.threat_category.value
                 if guard_res.threat_category
@@ -441,6 +470,7 @@ async def chat_completions(
             session=db,
             client_ip=client_ip,
             canary_token=canary_token,
+            tenant_id=current_tenant_id,
         )
         return StreamingResponse(
             inspector.inspect_and_stream(upstream_token_stream()),
@@ -449,6 +479,8 @@ async def chat_completions(
                 "Cache-Control": "no-cache",
                 "Connection": "keep-alive",
                 "X-Cache-Status": "MISS",
+                "X-Sentinel-Tenant": tenant.slug,
+                "X-Sentinel-Budget-Remaining": f"${max(0.0, tenant.monthly_budget_usd - tenant.current_spend_usd):.2f}",
             },
         )
 
@@ -485,6 +517,10 @@ async def chat_completions(
                         else "system_prompt_extraction",
                         severity="critical",
                     ).inc()
+                    sentinel_tenant_requests_total.labels(
+                        tenant=tenant.slug,
+                        status="403",
+                    ).inc()
                     sentinel_requests_total.labels(
                         model=request_data.model,
                         status="403",
@@ -492,6 +528,7 @@ async def chat_completions(
                     incident_id = str(uuid.uuid4())
                     audit_record = AuditIncident(
                         id=uuid.UUID(incident_id),
+                        tenant_id=current_tenant_id,
                         client_ip=client_ip,
                         threat_category=guard_res.threat_category.value
                         if guard_res.threat_category

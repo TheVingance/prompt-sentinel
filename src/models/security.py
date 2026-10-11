@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime
 
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import Column, DateTime, Float, Integer, String, Text
+from sqlalchemy import Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 
 from src.core.database import Base
@@ -29,6 +29,9 @@ class AuditIncident(Base):
     __tablename__ = "audit_incidents"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(
+        UUID(as_uuid=True), ForeignKey("tenants.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     client_ip = Column(String(45), nullable=False, index=True)
     threat_category = Column(String(50), nullable=False)
     threat_severity = Column(String(20), nullable=False)

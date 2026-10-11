@@ -87,6 +87,9 @@ flowchart LR
 | Método | Endpoint | Autenticação | Descrição |
 |---|---|---|---|
 | `POST` | `/v1/chat/completions` | `Bearer Token` | Proxy reverso compatível com OpenAI. Aplica rate limit, DLP de PII, semantic cache e guardrails. |
+| `GET` | `/v1/siem/events` | `Bearer Token` | Exportador de telemetria de segurança em formatos padrão **CEF (ArcSight)**, **LEEF (QRadar)** e **JSON** para SIEMs corporativos (Splunk, Elastic, Sentinel). |
+| `POST` | `/v1/tenants` | `Bearer Token (Master)` | Cadastro de nova organização/departamento com chave de API exclusiva e cota orçamentária FinOps. |
+| `GET` | `/v1/tenants` | `Bearer Token (Master)` | Listagem de organizações com controle de consumo orçamentário acumulado. |
 | `GET` | `/v1/audit/incidents` | `Bearer Token` | Consulta paginada da trilha forense de incidentes bloqueados com filtros por severidade e categoria. |
 | `GET` | `/v1/audit/metrics` | `Bearer Token` | Sumário estatístico consolidado (total bloqueado, incidentes 24h, distribuição por categoria e score médio). |
 | `GET` | `/metrics` | Pública | Exportador oficial de telemetria corporativa no formato padrão do **Prometheus**. |
@@ -129,6 +132,31 @@ Para evitar falhas catastróficas quando provedores upstream de IA (como OpenAI 
 ### Métricas Prometheus de Confiabilidade
 - `sentinel_fallbacks_total{from_model, to_model}`: Contador de acionamentos de contingência entre modelos.
 - `sentinel_circuit_breaker_state{provider}`: Gauge exportando o estado de saúde de cada provedor (0=CLOSED, 1=HALF_OPEN, 2=OPEN).
+
+---
+
+## 🏢 Multi-Tenancy & SIEM Event Forwarder (CEF / LEEF)
+
+Para atender a demandas corporativas complexas em ambientes compartilhados por múltiplos times ou clientes B2B, o PromptSentinel conta com segregação de organizações e integração nativa com centros de operações de segurança (SOC):
+
+### Governança & Multi-Tenancy
+- **Chaves de API Dedicadas:** Cada organização possui sua própria chave (`sentinel-org-<slug>-...`) armazenada de forma segura com hash SHA-256.
+- **Isolamento FinOps & Orçamentário:** Definição de tetos de gastos mensais em dólares (`monthly_budget_usd`). Caso uma organização exceda sua cota, o gateway rejeita novas chamadas com `402 Payment Required` (`monthly_budget_exceeded`), blindando o orçamento corporativo global.
+- **Cabeçalhos de Governança Retornados:**
+  - `X-Sentinel-Tenant`: Slug da organização autenticada (ex: `financeiro`, `marketing`).
+  - `X-Sentinel-Budget-Remaining`: Saldo financeiro restante do orçamento mensal do tenant em USD.
+
+### SIEM Event Forwarder (Splunk, Elastic, Sentinel, QRadar)
+Exportação de incidentes de segurança via endpoint `/v1/siem/events` nos padrões oficiais de telemetria corporativa:
+- **ArcSight CEF (Common Event Format v0):**
+  ```text
+  CEF:0|PromptSentinel|AI-Firewall|1.0.0|PROMPT_INJECTION|Tentativa explícita de bypass detectada|10|src=192.168.1.100 suser=financeiro cs1=gpt-4o act=blocked cn1=98
+  ```
+- **IBM QRadar LEEF (Log Event Extended Format 2.0):**
+  ```text
+  LEEF:2.0|PromptSentinel|AI-Firewall|1.0.0|PROMPT_INJECTION|	src=192.168.1.100	usr=financeiro	sev=10	act=blocked
+  ```
+- **JSON Estruturado:** Payload nativo para ingestão em Elastic SIEM ou HTTP Event Collector (HEC) do Splunk.
 
 ---
 
@@ -192,7 +220,7 @@ Resultados empíricos obtidos através da suite assíncrona de teste de carga (`
 ## 🧪 Qualidade de Código & Testes Automatizados
 
 O projeto conta com esteira de CI/CD via **GitHub Actions** executando em cada commit e Pull Request:
-- **56 testes automatizados com `Pytest`** cobrindo todas as rotas, detecção vetorial, anonimização, rate limiting, canary tokens, streaming SSE e circuit breaking resiliente.
+- **62 testes automatizados com `Pytest`** cobrindo todas as rotas, detecção vetorial, anonimização, rate limiting, canary tokens, streaming SSE, circuit breaking e multi-tenancy corporativo com SIEM.
 - **Linter estrito com `Ruff`** garantindo conformidade com padrões PEP 8 e tipagem moderna do Python 3.12+.
 
 Para rodar os testes localmente:
